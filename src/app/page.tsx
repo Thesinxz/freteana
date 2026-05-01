@@ -261,11 +261,29 @@ export default function DashboardPage() {
                   <div className="glass-card overflow-hidden divide-y divide-slate-100/50">
                     {dayFreights.map(freight => {
                       const transport = transporters.find(t => t.id === freight.transportId);
-                      const TransportIcon = ICONS[transport?.icon || 'Truck'] || Truck;
+                      const iconKey = transport?.icon || 'Truck';
+                      const TransportIcon = ICONS[iconKey] || ICONS[iconKey.charAt(0).toUpperCase() + iconKey.slice(1).toLowerCase()] || Truck;
+                      
+                      // Map Tailwind classes to actual hex colors for reliability
+                      const COLOR_MAP: Record<string, string> = {
+                        'bg-blue-600': '#2563eb',
+                        'bg-blue-800': '#1e40af',
+                        'bg-emerald-600': '#059669',
+                        'bg-amber-600': '#d97706',
+                        'bg-purple-600': '#9333ea',
+                        'bg-red-600': '#dc2626',
+                        'bg-pink-600': '#db2777',
+                        'bg-slate-400': '#94a3b8',
+                      };
+                      const bgColor = transport?.color ? (COLOR_MAP[transport.color] || '#3b82f6') : '#94a3b8';
+
                       return (
                         <div key={freight.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
                           <div className="flex items-center space-x-4">
-                            <div className={cn("p-2.5 rounded-2xl text-white shadow-sm", transport?.color || "bg-slate-400")}>
+                            <div 
+                              className="p-2.5 rounded-2xl text-white shadow-sm flex items-center justify-center"
+                              style={{ backgroundColor: bgColor }}
+                            >
                               <TransportIcon className="w-4 h-4" />
                             </div>
                             <div>

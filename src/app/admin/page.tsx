@@ -186,6 +186,18 @@ export default function AdminDashboard() {
     }).filter(s => s.value > 0);
   }, [filteredData, transporters]);
 
+  const handleAddExpense = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const amount = parseInt(newExpense.amount, 10);
+    if (isNaN(amount) || amount <= 0) return;
+    try {
+      await addExpense(newExpense.category, amount, newExpense.note);
+      setNewExpense({ category: EXPENSE_CATEGORIES[0], amount: '', note: '' });
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const handlePrint = () => window.print();
 
   const handleShareLedger = () => {
@@ -388,11 +400,33 @@ export default function AdminDashboard() {
                       const isFreight = item.type === 'freight';
                       const isPayment = item.type === 'payment';
                       const transport = isFreight ? transporters.find(t => t.id === item.transportId) : null;
-                      const Icon = isFreight ? (ICONS[transport?.icon || 'Truck'] || Truck) : isPayment ? ArrowDownRight : XCircle;
+                      
+                      const iconKey = isFreight ? (transport?.icon || 'Truck') : '';
+                      const Icon = isFreight 
+                        ? (ICONS[iconKey] || ICONS[iconKey.charAt(0).toUpperCase() + iconKey.slice(1).toLowerCase()] || Truck) 
+                        : isPayment ? ArrowDownRight : XCircle;
+
+                      // Map Tailwind classes to actual hex colors for reliability
+                      const COLOR_MAP: Record<string, string> = {
+                        'bg-blue-600': '#2563eb',
+                        'bg-blue-800': '#1e40af',
+                        'bg-emerald-600': '#059669',
+                        'bg-amber-600': '#d97706',
+                        'bg-purple-600': '#9333ea',
+                        'bg-red-600': '#dc2626',
+                        'bg-pink-600': '#db2777',
+                        'bg-slate-400': '#94a3b8',
+                      };
+                      
+                      const freightColor = isFreight ? (COLOR_MAP[transport?.color || ''] || '#3b82f6') : '';
+
                       return (
                         <tr key={item.id} className={cn("border-b hover:bg-white/10 transition-colors", item.canceled && "opacity-40", darkMode ? "border-slate-800/50" : "border-slate-50")}>
                           <td className="p-4">
-                            <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isFreight ? "bg-blue-100 text-blue-600" : isPayment ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600")}>
+                            <div 
+                              className={cn("w-8 h-8 rounded-lg flex items-center justify-center", !isFreight && (isPayment ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600"))}
+                              style={isFreight ? { backgroundColor: freightColor, color: 'white' } : {}}
+                            >
                               <Icon className="w-4 h-4" />
                             </div>
                           </td>

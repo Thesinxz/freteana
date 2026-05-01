@@ -5,6 +5,7 @@ export interface User {
   email: string;
   role: Role;
   name: string;
+  calendarTokens?: any;
 }
 
 export interface Transporter {

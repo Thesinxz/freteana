@@ -94,7 +94,7 @@ export function useLedger() {
     }
   };
 
-  const addPayment = async (amount: number, note?: string) => {
+  const addPayment = async (amount: number, note?: string): Promise<boolean> => {
     try {
       await addDoc(collection(db, "pagamentos"), {
         amount,
@@ -103,8 +103,10 @@ export function useLedger() {
         canceled: false
       });
       toast.success("Pagamento registrado!");
+      return true;
     } catch (error) {
       toast.error("Erro ao registrar pagamento.");
+      return false;
     }
   };
 
