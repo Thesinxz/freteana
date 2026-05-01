@@ -5,28 +5,41 @@ export interface User {
   email: string;
   role: Role;
   name: string;
-  calendarTokens?: any; 
+}
+
+export interface Transporter {
+  id: string;
+  name: string;
+  color: string; // bg-class
+  textColor: string; // text-class
+  borderColor: string; // border-class
+  icon: string; // Lucide icon name
+  active: boolean;
 }
 
 export interface FreightRecord {
-  id: string; // auto-generated
-  transportId: string; // 'estrella' | 'sol' | 'cometa'
-  amount: number; // in cents
-  createdAt: number; // timestamp in ms
+  id: string;
+  transportId: string;
+  amount: number;
+  createdAt: number;
   note?: string;
   canceled?: boolean;
 }
 
 export interface PaymentRecord {
-  id: string; // auto-generated
-  amount: number; // in cents
-  createdAt: number; // timestamp in ms
+  id: string;
+  amount: number;
+  createdAt: number;
   note?: string;
   canceled?: boolean;
 }
 
-export const TRANSPORTERS = [
-  { id: 'estrella', name: 'Estrella Del Norte', color: 'bg-blue-800', textColor: 'text-blue-800', borderColor: 'border-blue-800', icon: 'Truck' },
-  { id: 'sol', name: 'Sol Del Norte', color: 'bg-amber-600', textColor: 'text-amber-600', borderColor: 'border-amber-600', icon: 'Sun' },
-  { id: 'cometa', name: 'Cometa Del Amambay', color: 'bg-emerald-600', textColor: 'text-emerald-600', borderColor: 'border-emerald-600', icon: 'Zap' },
-];
+export interface ExpenseRecord {
+  id: string;
+  category: string;
+  amount: number;
+  createdAt: number;
+  note?: string;
+  canceled?: boolean;
+}
+

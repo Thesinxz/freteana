@@ -6,7 +6,7 @@ import { TRANSPORTERS } from "@/types";
 import { formatCurrency, cn } from "@/lib/utils";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Calendar as CalendarIcon, DollarSign, Save, ArrowUpRight, Plus, Sparkles } from "lucide-react";
+import { Calendar as CalendarIcon, DollarSign, Save, ArrowUpRight, Plus, Sparkles, Share2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -15,15 +15,12 @@ import { toast } from "sonner";
 import confetti from "canvas-confetti";
 
 export default function DashboardPage() {
-  const { freights, balance, loading, addFreight } = useLedger();
+  const { freights, balance, netProfit, transporters, loading, addFreight } = useLedger();
   const router = useRouter();
 
-  const [drafts, setDrafts] = useState<Record<string, string>>({
-    estrella: "",
-    sol: "",
-    cometa: ""
-  });
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+  const [viewMode, setViewMode] = useState<'balance' | 'profit'>('balance');
   
   // Date picker state, defaults to today
   const [selectedDateStr, setSelectedDateStr] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -32,13 +29,30 @@ export default function DashboardPage() {
     setDrafts(prev => ({ ...prev, [id]: value }));
   };
 
+  const handleShare = (dateStr: string, dayFreights: any[]) => {
+    const dateObj = parseISO(dateStr);
+    const dateFormatted = format(dateObj, "dd/MM/yyyy");
+    let message = `*Resumo de Fretes - ${dateFormatted}*\n\n`;
+    
+    let totalDay = 0;
+    dayFreights.forEach((f: any) => {
+      const t = transporters.find(trans => trans.id === f.transportId);
+      message += `• ${t?.name || 'Transportadora'}: ${formatCurrency(f.amount / 100)}\n`;
+      totalDay += f.amount;
+    });
+    
+    message += `\n*Total do Dia: ${formatCurrency(totalDay / 100)}*`;
+    
+    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   const hasAnyDraft = Object.values(drafts).some(val => parseInt(val || "0", 10) > 0);
 
   const handleSaveAll = async () => {
     setIsSaving(true);
     let count = 0;
     
-    // Parse selected date and create timestamp at 12:00 PM of that date to avoid timezone issues
     let customMs = Date.now();
     if (selectedDateStr) {
       const parsed = parseISO(selectedDateStr);
@@ -47,18 +61,17 @@ export default function DashboardPage() {
     }
 
     try {
-      for (const config of TRANSPORTERS) {
-        const val = parseInt(drafts[config.id] || "0", 10);
+      for (const transport of transporters) {
+        const val = parseInt(drafts[transport.id] || "0", 10);
         if (val > 0) {
-          await addFreight(config.id, val, customMs);
+          await addFreight(transport.id, val, customMs);
           count++;
         }
       }
       if (count > 0) {
         toast.success(`${count} lançamento(s) salvo(s)!`);
-        setDrafts({ estrella: "", sol: "", cometa: "" });
+        setDrafts({});
         
-        // Confetti!
         confetti({
           particleCount: 100,
           spread: 70,
@@ -82,11 +95,9 @@ export default function DashboardPage() {
   }
 
   // Date objects are used inside the grouping loop now
-
   const validFreights = freights.filter(f => !f.canceled).sort((a, b) => b.createdAt - a.createdAt);
   
   const groupedFreights = validFreights.reduce((acc, freight) => {
-    // Add timezone offset to ensure the date aligns with local time representation
     const localDate = new Date(freight.createdAt);
     const dateStr = format(localDate, "yyyy-MM-dd");
     if (!acc[dateStr]) {
@@ -104,7 +115,6 @@ export default function DashboardPage() {
       {/* HeaderDay */}
       <header className="pt-safe px-4 pt-6 pb-8 relative z-10">
         <div className="glass-card p-6 overflow-hidden relative">
-          {/* Decorative glows inside card */}
           <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
           <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-2000"></div>
           
@@ -125,17 +135,22 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          <div className="bg-slate-900 rounded-[1.25rem] p-5 flex items-center justify-between shadow-2xl relative z-10 overflow-hidden">
+          <div 
+            className="bg-slate-900 rounded-[1.25rem] p-5 flex items-center justify-between shadow-2xl relative z-10 overflow-hidden cursor-pointer"
+            onClick={() => setViewMode(prev => prev === 'balance' ? 'profit' : 'balance')}
+          >
             <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 mix-blend-overlay"></div>
             <div>
-              <p className="text-sm text-slate-300 mb-1 font-medium">Saldo a Receber</p>
+              <p className="text-sm text-slate-300 mb-1 font-medium">
+                {viewMode === 'balance' ? 'Saldo a Receber' : 'Lucro Líquido'}
+              </p>
               <motion.p 
-                key={balance}
-                initial={{ scale: 1.1, color: "#6EE7B7" }}
-                animate={{ scale: 1, color: "#FFFFFF" }}
-                className="font-black text-3xl tracking-tight"
+                key={viewMode === 'balance' ? balance : netProfit}
+                initial={{ opacity: 0, x: -10 }}
+                animate={{ opacity: 1, x: 0 }}
+                className="font-black text-3xl tracking-tight text-white"
               >
-                {formatCurrency(balance / 100)}
+                {formatCurrency((viewMode === 'balance' ? balance : netProfit) / 100)}
               </motion.p>
             </div>
             <div className={`p-3 rounded-full ${hasDebt ? 'bg-amber-400 text-amber-900 shadow-[0_0_15px_rgba(251,191,36,0.5)]' : 'bg-emerald-400 text-emerald-900 shadow-[0_0_15px_rgba(52,211,153,0.5)]'} transition-all`}>
@@ -160,12 +175,12 @@ export default function DashboardPage() {
         </div>
         
         <div className="space-y-4">
-          {TRANSPORTERS.map((config) => (
+          {transporters.filter(t => t.active).map((transport) => (
             <TransportCard
-              key={config.id}
-              config={config}
-              value={drafts[config.id]}
-              onChange={(val) => handleDraftChange(config.id, val)}
+              key={transport.id}
+              config={transport}
+              value={drafts[transport.id] || ""}
+              onChange={(val) => handleDraftChange(transport.id, val)}
             />
           ))}
         </div>
@@ -210,12 +225,21 @@ export default function DashboardPage() {
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                 >
-                  <h2 className="text-slate-800 font-bold ml-2 mb-4 tracking-tight">
-                    Lançamentos de {isToday ? "Hoje" : format(dateObj, "dd/MM/yyyy", { locale: ptBR })}
-                  </h2>
+                  <div className="flex justify-between items-center mb-4 px-2">
+                    <h2 className="text-slate-800 font-bold tracking-tight">
+                      Lançamentos de {isToday ? "Hoje" : format(dateObj, "dd/MM/yyyy", { locale: ptBR })}
+                    </h2>
+                    <button 
+                      onClick={() => handleShare(dateStr, dayFreights)}
+                      className="p-2 text-blue-500 hover:bg-blue-50 rounded-full transition-colors flex items-center text-xs font-bold"
+                    >
+                      <Share2 className="w-4 h-4 mr-1" />
+                      Compartilhar
+                    </button>
+                  </div>
                   <div className="glass-card overflow-hidden divide-y divide-slate-100/50">
                     {dayFreights.map(freight => {
-                      const transport = TRANSPORTERS.find(t => t.id === freight.transportId);
+                      const transport = transporters.find(t => t.id === freight.transportId);
                       return (
                         <div key={freight.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
                           <div className="flex items-center space-x-4">
@@ -223,7 +247,7 @@ export default function DashboardPage() {
                               <ArrowUpRight className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="font-bold text-slate-800">{transport?.name}</p>
+                              <p className="font-bold text-slate-800">{transport?.name || 'Deletada'}</p>
                               <p className="text-xs text-slate-500 font-medium">{format(new Date(freight.createdAt), "HH:mm")}</p>
                             </div>
                           </div>
@@ -243,3 +267,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+

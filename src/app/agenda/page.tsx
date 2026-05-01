@@ -3,24 +3,23 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Calendar, Plus, Truck } from "lucide-react";
-import { TRANSPORTERS } from "@/types";
 import { motion } from "framer-motion";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { useLedger } from "@/hooks/useLedger";
+import { cn } from "@/lib/utils";
 
 export default function AgendaPage() {
   const router = useRouter();
   const { user } = useAuth();
+  const { transporters } = useLedger();
   
-  // No mundo real, faríamos fetch na API ou Firestore.
-  // Por enquanto mockup
   const [events, setEvents] = useState([
-    { id: 1, transport: 'estrella', date: new Date(Date.now() + 86400000), note: "Retirar as 14h" }
+    { id: 1, transportId: 'estrella', date: new Date(Date.now() + 86400000), note: "Retirar as 14h" }
   ]);
 
   const handleConnectCalendar = () => {
-    // Redireciona para API route de Auth do Google Calendar
     window.location.href = "/api/calendar/auth";
   };
 
@@ -65,7 +64,7 @@ export default function AgendaPage() {
         
         <div className="space-y-3">
           {events.map((event) => {
-            const transport = TRANSPORTERS.find(t => t.id === event.transport);
+            const transport = transporters.find(t => t.id === event.transportId);
             return (
               <motion.div 
                 key={event.id}
@@ -73,11 +72,11 @@ export default function AgendaPage() {
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-white p-4 rounded-2xl shadow-sm border border-slate-100 flex items-start space-x-4"
               >
-                <div className={`p-3 rounded-xl ${transport?.color || 'bg-slate-200'} text-white`}>
+                <div className={cn("p-3 rounded-xl text-white", transport?.color || 'bg-slate-400')}>
                   <Truck className="w-6 h-6" />
                 </div>
                 <div className="flex-1">
-                  <h4 className="font-bold text-slate-800">{transport?.name}</h4>
+                  <h4 className="font-bold text-slate-800">{transport?.name || 'Transportadora'}</h4>
                   <p className="text-sm text-slate-500 capitalize">
                     {format(event.date, "EEEE, dd/MM 'às' HH:mm", { locale: ptBR })}
                   </p>

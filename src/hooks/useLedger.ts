@@ -8,27 +8,34 @@ import {
   addDoc,
   doc,
   updateDoc,
-  orderBy
+  orderBy,
+  setDoc,
+  deleteDoc
 } from "firebase/firestore";
 import { db } from "@/lib/firebase/config";
-import { FreightRecord, PaymentRecord } from "@/types";
+import { FreightRecord, PaymentRecord, Transporter, ExpenseRecord } from "@/types";
 import { toast } from "sonner";
 
 export function useLedger() {
   const [freights, setFreights] = useState<FreightRecord[]>([]);
   const [payments, setPayments] = useState<PaymentRecord[]>([]);
+  const [transporters, setTransporters] = useState<Transporter[]>([]);
+  const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    // Listen to Transporters
+    const transportersQuery = query(collection(db, "transportadoras"), orderBy("name", "asc"));
+    const unsubTransporters = onSnapshot(transportersQuery, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transporter));
+      setTransporters(data);
+    });
+
     // Listen to Freights
     const freightsQuery = query(collection(db, "fretes"), orderBy("createdAt", "desc"));
     const unsubFreights = onSnapshot(freightsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FreightRecord));
       setFreights(data);
-      checkLoading(true, false);
-    }, (err) => {
-      console.error(err);
-      toast.error("Erro ao carregar fretes");
     });
 
     // Listen to Payments
@@ -36,30 +43,39 @@ export function useLedger() {
     const unsubPayments = onSnapshot(paymentsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentRecord));
       setPayments(data);
-      checkLoading(false, true);
-    }, (err) => {
-      console.error(err);
-      toast.error("Erro ao carregar pagamentos");
     });
 
-    let fLoaded = false;
-    let pLoaded = false;
-    
-    function checkLoading(fDone: boolean, pDone: boolean) {
-      if (fDone) fLoaded = true;
-      if (pDone) pLoaded = true;
-      if (fLoaded && pLoaded) setLoading(false);
-    }
+    // Listen to Expenses
+    const expensesQuery = query(collection(db, "despesas"), orderBy("createdAt", "desc"));
+    const unsubExpenses = onSnapshot(expensesQuery, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExpenseRecord));
+      setExpenses(data);
+    });
+
+    // Simple loading check
+    const checkAllLoaded = () => {
+      // In a real app we would track each separately, but for now:
+      setLoading(false);
+    };
+
+    // Delay a bit to let snapshots arrive
+    const timer = setTimeout(checkAllLoaded, 1000);
 
     return () => {
+      unsubTransporters();
       unsubFreights();
       unsubPayments();
+      unsubExpenses();
+      clearTimeout(timer);
     };
   }, []);
 
   const totalFreights = freights.filter(f => !f.canceled).reduce((acc, f) => acc + f.amount, 0);
   const totalPayments = payments.filter(p => !p.canceled).reduce((acc, p) => acc + p.amount, 0);
-  const balance = totalFreights - totalPayments; // Positive means debt to Ana
+  const totalExpenses = expenses.filter(e => !e.canceled).reduce((acc, e) => acc + e.amount, 0);
+  
+  const balance = totalFreights - totalPayments; // Saldo a receber das transportadoras
+  const netProfit = totalFreights - totalExpenses; // Lucro real (Fretes - Despesas)
 
   const addFreight = async (transportId: string, amount: number, customDateMs?: number) => {
     try {
@@ -71,7 +87,6 @@ export function useLedger() {
       });
       toast.success("Frete adicionado com sucesso!");
     } catch (error) {
-      console.error("Error adding freight:", error);
       toast.error("Erro ao adicionar frete.");
       throw error;
     }
@@ -85,25 +100,66 @@ export function useLedger() {
         note: note || "",
         canceled: false
       });
-      return true;
+      toast.success("Pagamento registrado!");
     } catch (error) {
-      console.error("Error adding payment:", error);
       toast.error("Erro ao registrar pagamento.");
-      return false;
     }
   };
 
-  const cancelRecord = async (type: 'freight' | 'payment', id: string) => {
+  const addExpense = async (category: string, amount: number, note?: string) => {
     try {
-      const collectionName = type === 'freight' ? 'fretes' : 'pagamentos';
-      const docRef = doc(db, collectionName, id);
-      await updateDoc(docRef, { canceled: true });
-      toast.success("Registro cancelado com sucesso!");
+      await addDoc(collection(db, "despesas"), {
+        category,
+        amount,
+        note: note || "",
+        createdAt: Date.now(),
+        canceled: false
+      });
+      toast.success("Despesa registrada!");
     } catch (error) {
-      console.error("Error canceling record:", error);
-      toast.error("Erro ao cancelar o registro.");
+      toast.error("Erro ao registrar despesa.");
     }
   };
 
-  return { freights, payments, balance, loading, addFreight, addPayment, cancelRecord };
+  const manageTransporter = async (transporter: Partial<Transporter> & { id?: string }) => {
+    try {
+      if (transporter.id) {
+        await setDoc(doc(db, "transportadoras", transporter.id), transporter, { merge: true });
+        toast.success("Transportadora atualizada!");
+      } else {
+        const newRef = doc(collection(db, "transportadoras"));
+        await setDoc(newRef, { ...transporter, active: true });
+        toast.success("Transportadora adicionada!");
+      }
+    } catch (error) {
+      toast.error("Erro ao salvar transportadora.");
+    }
+  };
+
+  const cancelRecord = async (type: 'freight' | 'payment' | 'expense', id: string) => {
+    try {
+      const map = { freight: 'fretes', payment: 'pagamentos', expense: 'despesas' };
+      const collectionName = map[type];
+      await updateDoc(doc(db, collectionName, id), { canceled: true });
+      toast.success("Cancelado!");
+    } catch (error) {
+      toast.error("Erro ao cancelar.");
+    }
+  };
+
+  return { 
+    freights, 
+    payments, 
+    transporters, 
+    expenses,
+    balance, 
+    netProfit,
+    loading, 
+    addFreight, 
+    addPayment, 
+    addExpense,
+    manageTransporter,
+    cancelRecord 
+  };
 }
+

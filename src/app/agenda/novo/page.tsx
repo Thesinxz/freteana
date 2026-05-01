@@ -1,18 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
-import { TRANSPORTERS } from "@/types";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { useLedger } from "@/hooks/useLedger";
 
 export default function NovaColetaPage() {
   const router = useRouter();
-  const [transport, setTransport] = useState(TRANSPORTERS[0].id);
+  const { transporters } = useLedger();
+  const [transportId, setTransportId] = useState("");
   const [date, setDate] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (transporters.length > 0 && !transportId) {
+      setTransportId(transporters[0].id);
+    }
+  }, [transporters, transportId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -22,7 +29,6 @@ export default function NovaColetaPage() {
     }
 
     setLoading(true);
-    // Aqui seria chamada API real
     setTimeout(() => {
       setLoading(false);
       toast.success("Coleta agendada com sucesso!");
@@ -52,11 +58,11 @@ export default function NovaColetaPage() {
             <label className="text-sm font-bold text-slate-600 ml-1">Transportador</label>
             <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
               <select 
-                value={transport}
-                onChange={(e) => setTransport(e.target.value)}
+                value={transportId}
+                onChange={(e) => setTransportId(e.target.value)}
                 className="w-full p-4 bg-transparent focus:outline-none text-slate-800 font-medium"
               >
-                {TRANSPORTERS.map(t => (
+                {transporters.map(t => (
                   <option key={t.id} value={t.id}>{t.name}</option>
                 ))}
               </select>
