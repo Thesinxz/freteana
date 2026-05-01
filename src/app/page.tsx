@@ -14,7 +14,11 @@ import {
   Sparkles, 
   Share2, 
   LayoutDashboard,
-  Home
+  Home,
+  Truck,
+  Sun,
+  Zap,
+  Star
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -22,6 +26,13 @@ import Link from "next/link";
 import { useState } from "react";
 import { toast } from "sonner";
 import confetti from "canvas-confetti";
+
+const ICONS: Record<string, React.ElementType> = {
+  Truck,
+  Sun,
+  Zap,
+  Star,
+};
 
 export default function DashboardPage() {
   const { freights, balance, netProfit, transporters, loading, addFreight } = useLedger();
@@ -69,7 +80,6 @@ export default function DashboardPage() {
       parsed.setHours(12, 0, 0, 0);
       customMs = parsed.getTime();
     }
-
 
     try {
       for (const transport of transporters) {
@@ -247,11 +257,12 @@ export default function DashboardPage() {
                   <div className="glass-card overflow-hidden divide-y divide-slate-100/50">
                     {dayFreights.map(freight => {
                       const transport = transporters.find(t => t.id === freight.transportId);
+                      const TransportIcon = ICONS[transport?.icon || 'Truck'] || Truck;
                       return (
                         <div key={freight.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
                           <div className="flex items-center space-x-4">
                             <div className={cn("p-2.5 rounded-2xl text-white shadow-sm", transport?.color || "bg-slate-400")}>
-                              <ArrowUpRight className="w-4 h-4" />
+                              <TransportIcon className="w-4 h-4" />
                             </div>
                             <div>
                               <p className="font-bold text-slate-800">{transport?.name || '...'}</p>
