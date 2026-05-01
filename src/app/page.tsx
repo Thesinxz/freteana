@@ -2,6 +2,7 @@
 
 import { useLedger } from "@/hooks/useLedger";
 import { TransportCard } from "@/components/TransportCard";
+import { PixCards } from "@/components/PixCards";
 import { formatCurrency, cn } from "@/lib/utils";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -232,6 +233,8 @@ export default function DashboardPage() {
             </motion.div>
           )}
         </AnimatePresence>
+
+        <PixCards />
 
         {sortedDates.length > 0 && (
           <div className="mt-10 mb-8 space-y-8">
