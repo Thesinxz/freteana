@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatCurrency, cn } from "@/lib/utils";
-import { Truck, Sun, Zap, Save } from "lucide-react";
+import { Truck, Sun, Zap, Save, Star } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface TransportCardProps {
@@ -22,7 +22,9 @@ const ICONS: Record<string, React.ElementType> = {
   Truck,
   Sun,
   Zap,
+  Star,
 };
+
 
 export function TransportCard({ config, value, onChange }: TransportCardProps) {
   const Icon = ICONS[config.icon] || Truck;

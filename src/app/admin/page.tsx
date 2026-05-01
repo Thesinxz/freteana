@@ -19,7 +19,10 @@ import {
   CheckCircle2,
   Calendar,
   DollarSign,
-  Share2
+  Share2,
+  Star,
+  Sun,
+  Zap
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Transporter } from "@/types";
@@ -41,6 +44,13 @@ import {
 } from "recharts";
 
 type Tab = 'extrato' | 'transportadoras' | 'despesas' | 'relatorios';
+
+const ICONS: Record<string, React.ElementType> = {
+  Truck,
+  Sun,
+  Zap,
+  Star,
+};
 
 export default function AdminDashboard() {
   const { 
@@ -245,11 +255,12 @@ export default function AdminDashboard() {
                       const isFreight = item.type === 'freight';
                       const isPayment = item.type === 'payment';
                       const transport = isFreight ? transporters.find(t => t.id === item.transportId) : null;
+                      const Icon = isFreight ? (ICONS[transport?.icon || 'Truck'] || Truck) : isPayment ? ArrowDownRight : XCircle;
                       return (
                         <tr key={item.id} className={cn("border-b border-slate-50 hover:bg-slate-50/50 transition-colors", item.canceled && "opacity-40")}>
                           <td className="p-4">
                             <div className={cn("w-8 h-8 rounded-lg flex items-center justify-center", isFreight ? "bg-blue-100 text-blue-600" : isPayment ? "bg-emerald-100 text-emerald-600" : "bg-red-100 text-red-600")}>
-                              {isFreight ? <ArrowUpRight className="w-4 h-4" /> : isPayment ? <ArrowDownRight className="w-4 h-4" /> : <XCircle className="w-4 h-4" />}
+                              <Icon className="w-4 h-4" />
                             </div>
                           </td>
                           <td className="p-4">
@@ -320,25 +331,39 @@ export default function AdminDashboard() {
                 <h3 className="font-bold text-slate-800 mb-6">Cadastrar Nova</h3>
                 <form onSubmit={handleAddTransporter} className="flex flex-col md:flex-row gap-4">
                   <input type="text" placeholder="Nome" value={newTransporter.name} onChange={e => setNewTransporter({...newTransporter, name: e.target.value})} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none" />
+                  <select value={newTransporter.icon} onChange={e => setNewTransporter({...newTransporter, icon: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
+                    <option value="Truck">Caminhão</option>
+                    <option value="Star">Estrela</option>
+                    <option value="Sun">Sol</option>
+                    <option value="Zap">Cometa</option>
+                  </select>
                   <select value={newTransporter.color} onChange={e => setNewTransporter({...newTransporter, color: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
                     <option value="bg-blue-600">Azul</option>
                     <option value="bg-amber-600">Laranja</option>
                     <option value="bg-emerald-600">Verde</option>
                     <option value="bg-red-600">Vermelho</option>
+                    <option value="bg-purple-600">Roxo</option>
                   </select>
                   <button type="submit" className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold">Adicionar</button>
                 </form>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                {transporters.map(t => (
-                  <div key={t.id} className="glass-card p-6 flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white", t.color)}><Truck className="w-5 h-5" /></div>
-                      <h4 className="font-bold text-slate-800">{t.name}</h4>
+                {transporters.map(t => {
+                  const Icon = ICONS[t.icon] || Truck;
+                  return (
+                    <div key={t.id} className="glass-card p-6 flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white", t.color)}>
+                          <Icon className="w-5 h-5" />
+                        </div>
+                        <h4 className="font-bold text-slate-800">{t.name}</h4>
+                      </div>
+                      <button onClick={() => manageTransporter({ ...t, active: !t.active })} className={cn("p-2 rounded-lg transition-colors", t.active ? "text-emerald-500 hover:bg-emerald-50" : "text-slate-300 hover:bg-slate-100")}>
+                        <CheckCircle2 className="w-6 h-6" />
+                      </button>
                     </div>
-                    <button onClick={() => manageTransporter({ ...t, active: !t.active })} className={cn("p-2 rounded-lg", t.active ? "text-emerald-500" : "text-slate-300")}><CheckCircle2 className="w-6 h-6" /></button>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </motion.div>
           )}
@@ -356,7 +381,12 @@ export default function AdminDashboard() {
               <div className="glass-card overflow-hidden">
                 <table className="w-full text-left">
                   <thead>
-                    <tr className="bg-slate-50 text-[10px] uppercase font-bold tracking-widest border-b"><th className="p-4">Data</th><th className="p-4">Categoria</th><th className="p-4 text-right">Valor</th><th className="p-4"></th></tr>
+                    <tr className="bg-slate-50 text-[10px] uppercase font-bold tracking-widest border-b">
+                      <th className="p-4">Data</th>
+                      <th className="p-4">Categoria</th>
+                      <th className="p-4 text-right">Valor</th>
+                      <th className="p-4"></th>
+                    </tr>
                   </thead>
                   <tbody>
                     {expenses.map(e => (
@@ -364,7 +394,11 @@ export default function AdminDashboard() {
                         <td className="p-4 text-sm">{format(new Date(e.createdAt), "dd/MM/yyyy")}</td>
                         <td className="p-4 font-bold">{e.category}</td>
                         <td className="p-4 text-right text-red-600 font-bold">{formatCurrency(e.amount / 100)}</td>
-                        <td className="p-4 text-center"><button onClick={() => cancelRecord('expense', e.id)} className="text-slate-300"><Trash2 className="w-5 h-5" /></button></td>
+                        <td className="p-4 text-center">
+                          <button onClick={() => cancelRecord('expense', e.id)} className="text-slate-300 hover:text-red-500">
+                            <Trash2 className="w-5 h-5" />
+                          </button>
+                        </td>
                       </tr>
                     ))}
                   </tbody>
