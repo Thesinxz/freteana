@@ -29,9 +29,13 @@ import confetti from "canvas-confetti";
 
 const ICONS: Record<string, React.ElementType> = {
   Truck,
+  Caminhão: Truck,
   Sun,
+  Sol: Sun,
   Zap,
+  Cometa: Zap,
   Star,
+  Estrela: Star,
 };
 
 export default function DashboardPage() {

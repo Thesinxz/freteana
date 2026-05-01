@@ -20,9 +20,13 @@ interface TransportCardProps {
 
 const ICONS: Record<string, React.ElementType> = {
   Truck,
+  Caminhão: Truck,
   Sun,
+  Sol: Sun,
   Zap,
+  Cometa: Zap,
   Star,
+  Estrela: Star,
 };
 
 

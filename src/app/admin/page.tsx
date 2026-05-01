@@ -64,9 +64,13 @@ type Tab = 'extrato' | 'transportadoras' | 'despesas' | 'relatorios';
 
 const ICONS: Record<string, React.ElementType> = {
   Truck,
+  Caminhão: Truck,
   Sun,
+  Sol: Sun,
   Zap,
+  Cometa: Zap,
   Star,
+  Estrela: Star,
 };
 
 const EXPENSE_CATEGORIES = [
