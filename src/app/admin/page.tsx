@@ -53,6 +53,16 @@ const ICONS: Record<string, React.ElementType> = {
   Star,
 };
 
+const EXPENSE_CATEGORIES = [
+  "Combustível",
+  "Manutenção",
+  "Alimentação",
+  "Estacionamento",
+  "Pedágio",
+  "Pessoal",
+  "Outros"
+];
+
 export default function AdminDashboard() {
   const { 
     freights, 
@@ -70,7 +80,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<Tab>('extrato');
   
   const [newTransporter, setNewTransporter] = useState({ name: '', color: 'bg-blue-600', icon: 'Truck' });
-  const [newExpense, setNewExpense] = useState({ category: '', amount: '', note: '' });
+  const [newExpense, setNewExpense] = useState({ category: EXPENSE_CATEGORIES[0], amount: '', note: '' });
 
   const chartData = useMemo(() => {
     const monthStart = startOfMonth(new Date());
@@ -146,7 +156,7 @@ export default function AdminDashboard() {
     const amount = parseInt(newExpense.amount.replace(/\D/g, ""), 10);
     if (!newExpense.category || isNaN(amount)) return;
     await addExpense(newExpense.category, amount, newExpense.note);
-    setNewExpense({ category: '', amount: '', note: '' });
+    setNewExpense({ category: EXPENSE_CATEGORIES[0], amount: '', note: '' });
   };
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
@@ -402,8 +412,22 @@ export default function AdminDashboard() {
               <div className="glass-card p-8">
                 <h3 className="font-bold text-slate-800 mb-6">Lançar Despesa</h3>
                 <form onSubmit={handleAddExpense} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <input type="text" placeholder="Categoria" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-500/20" />
-                  <input type="text" placeholder="Valor (R$)" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value.replace(/\D/g, "")})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-500/20" />
+                  <select 
+                    value={newExpense.category} 
+                    onChange={e => setNewExpense({...newExpense, category: e.target.value})} 
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-500/20"
+                  >
+                    {EXPENSE_CATEGORIES.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  <input 
+                    type="text" 
+                    placeholder="Valor (R$)" 
+                    value={newExpense.amount} 
+                    onChange={e => setNewExpense({...newExpense, amount: e.target.value.replace(/\D/g, "")})} 
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-500/20" 
+                  />
                   <button type="submit" className="bg-red-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-500/20 active:scale-[0.98] transition-all">Lançar</button>
                 </form>
               </div>
