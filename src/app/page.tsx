@@ -81,11 +81,22 @@ export default function DashboardPage() {
     );
   }
 
-  const selectedDateObj = selectedDateStr ? parseISO(selectedDateStr) : new Date();
-  const isSelectedDateToday = isSameDay(selectedDateObj, new Date());
+  // Date objects are used inside the grouping loop now
 
-  // Filter freights for the currently selected date
-  const selectedDateFreights = freights.filter(f => !f.canceled && isSameDay(new Date(f.createdAt), selectedDateObj));
+  const validFreights = freights.filter(f => !f.canceled).sort((a, b) => b.createdAt - a.createdAt);
+  
+  const groupedFreights = validFreights.reduce((acc, freight) => {
+    // Add timezone offset to ensure the date aligns with local time representation
+    const localDate = new Date(freight.createdAt);
+    const dateStr = format(localDate, "yyyy-MM-dd");
+    if (!acc[dateStr]) {
+      acc[dateStr] = [];
+    }
+    acc[dateStr].push(freight);
+    return acc;
+  }, {} as Record<string, typeof freights>);
+  
+  const sortedDates = Object.keys(groupedFreights).sort((a, b) => b.localeCompare(a));
   const hasDebt = balance > 0;
 
   return (
@@ -185,38 +196,48 @@ export default function DashboardPage() {
           )}
         </AnimatePresence>
 
-        {/* Lançamentos do dia atual */}
-        {selectedDateFreights.length > 0 && (
-          <motion.div 
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-10 mb-8"
-          >
-            <h2 className="text-slate-800 font-bold ml-2 mb-4 tracking-tight">
-              Lançamentos de {isSelectedDateToday ? "Hoje" : format(selectedDateObj, "dd/MM/yyyy", { locale: ptBR })}
-            </h2>
-            <div className="glass-card overflow-hidden divide-y divide-slate-100/50">
-              {selectedDateFreights.map(freight => {
-                const transport = TRANSPORTERS.find(t => t.id === freight.transportId);
-                return (
-                  <div key={freight.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
-                    <div className="flex items-center space-x-4">
-                      <div className={cn("p-2.5 rounded-2xl text-white shadow-sm", transport?.color || "bg-slate-400")}>
-                        <ArrowUpRight className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <p className="font-bold text-slate-800">{transport?.name}</p>
-                        <p className="text-xs text-slate-500 font-medium">{format(new Date(freight.createdAt), "HH:mm")}</p>
-                      </div>
-                    </div>
-                    <span className="font-black text-lg text-slate-800 tracking-tight">
-                      {formatCurrency(freight.amount / 100)}
-                    </span>
+        {/* Histórico Geral Agrupado por Data */}
+        {sortedDates.length > 0 && (
+          <div className="mt-10 mb-8 space-y-8">
+            {sortedDates.map(dateStr => {
+              const dayFreights = groupedFreights[dateStr];
+              const dateObj = parseISO(dateStr);
+              const isToday = isSameDay(dateObj, new Date());
+              
+              return (
+                <motion.div 
+                  key={dateStr}
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                >
+                  <h2 className="text-slate-800 font-bold ml-2 mb-4 tracking-tight">
+                    Lançamentos de {isToday ? "Hoje" : format(dateObj, "dd/MM/yyyy", { locale: ptBR })}
+                  </h2>
+                  <div className="glass-card overflow-hidden divide-y divide-slate-100/50">
+                    {dayFreights.map(freight => {
+                      const transport = TRANSPORTERS.find(t => t.id === freight.transportId);
+                      return (
+                        <div key={freight.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
+                          <div className="flex items-center space-x-4">
+                            <div className={cn("p-2.5 rounded-2xl text-white shadow-sm", transport?.color || "bg-slate-400")}>
+                              <ArrowUpRight className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <p className="font-bold text-slate-800">{transport?.name}</p>
+                              <p className="text-xs text-slate-500 font-medium">{format(new Date(freight.createdAt), "HH:mm")}</p>
+                            </div>
+                          </div>
+                          <span className="font-black text-lg text-slate-800 tracking-tight">
+                            {formatCurrency(freight.amount / 100)}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
-            </div>
-          </motion.div>
+                </motion.div>
+              );
+            })}
+          </div>
         )}
       </main>
     </div>
