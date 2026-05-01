@@ -62,11 +62,14 @@ export default function DashboardPage() {
     let count = 0;
     
     let customMs = Date.now();
-    if (selectedDateStr) {
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    
+    if (selectedDateStr && selectedDateStr !== todayStr) {
       const parsed = parseISO(selectedDateStr);
       parsed.setHours(12, 0, 0, 0);
       customMs = parsed.getTime();
     }
+
 
     try {
       for (const transport of transporters) {
