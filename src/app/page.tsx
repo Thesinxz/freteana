@@ -2,11 +2,20 @@
 
 import { useLedger } from "@/hooks/useLedger";
 import { TransportCard } from "@/components/TransportCard";
-import { TRANSPORTERS } from "@/types";
 import { formatCurrency, cn } from "@/lib/utils";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
-import { Calendar as CalendarIcon, DollarSign, Save, ArrowUpRight, Plus, Sparkles, Share2 } from "lucide-react";
+import { 
+  Calendar as CalendarIcon, 
+  DollarSign, 
+  Save, 
+  ArrowUpRight, 
+  Plus, 
+  Sparkles, 
+  Share2, 
+  LayoutDashboard,
+  Home
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import Link from "next/link";
@@ -22,7 +31,6 @@ export default function DashboardPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [viewMode, setViewMode] = useState<'balance' | 'profit'>('balance');
   
-  // Date picker state, defaults to today
   const [selectedDateStr, setSelectedDateStr] = useState(format(new Date(), "yyyy-MM-dd"));
 
   const handleDraftChange = (id: string, value: string) => {
@@ -88,13 +96,12 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
         <span className="animate-spin h-10 w-10 border-4 border-blue-400 border-t-blue-600 rounded-full" />
       </div>
     );
   }
 
-  // Date objects are used inside the grouping loop now
   const validFreights = freights.filter(f => !f.canceled).sort((a, b) => b.createdAt - a.createdAt);
   
   const groupedFreights = validFreights.reduce((acc, freight) => {
@@ -111,8 +118,7 @@ export default function DashboardPage() {
   const hasDebt = balance > 0;
 
   return (
-    <div className="min-h-screen flex flex-col relative pb-32 overflow-x-hidden">
-      {/* HeaderDay */}
+    <div className="min-h-screen flex flex-col relative pb-32 bg-slate-50 overflow-x-hidden">
       <header className="pt-safe px-4 pt-6 pb-8 relative z-10">
         <div className="glass-card p-6 overflow-hidden relative">
           <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
@@ -129,8 +135,8 @@ export default function DashboardPage() {
               </h1>
             </div>
             <div className="flex space-x-2">
-              <Link href="/admin" className="px-4 py-2 bg-slate-900/5 hover:bg-slate-900/10 rounded-full backdrop-blur-md transition-all border border-white/20 shadow-sm">
-                <span className="text-slate-800 font-bold text-sm">Admin</span>
+              <Link href="/admin" className="px-4 py-2 bg-slate-900 text-white rounded-full transition-all shadow-lg active:scale-95">
+                <span className="font-bold text-sm">Admin</span>
               </Link>
             </div>
           </div>
@@ -160,7 +166,6 @@ export default function DashboardPage() {
         </div>
       </header>
 
-      {/* Main Content */}
       <main className="flex-1 px-4 space-y-5 relative z-0">
         <div className="flex justify-between items-center px-2">
           <h2 className="text-slate-800 font-bold text-lg tracking-tight">Novo Lançamento</h2>
@@ -211,7 +216,6 @@ export default function DashboardPage() {
           )}
         </AnimatePresence>
 
-        {/* Histórico Geral Agrupado por Data */}
         {sortedDates.length > 0 && (
           <div className="mt-10 mb-8 space-y-8">
             {sortedDates.map(dateStr => {
@@ -247,7 +251,7 @@ export default function DashboardPage() {
                               <ArrowUpRight className="w-4 h-4" />
                             </div>
                             <div>
-                              <p className="font-bold text-slate-800">{transport?.name || 'Deletada'}</p>
+                              <p className="font-bold text-slate-800">{transport?.name || '...'}</p>
                               <p className="text-xs text-slate-500 font-medium">{format(new Date(freight.createdAt), "HH:mm")}</p>
                             </div>
                           </div>
@@ -264,7 +268,24 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      {/* Bottom Nav Mobile */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 flex justify-around items-center p-3 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        <button 
+          onClick={() => router.push("/")}
+          className="flex flex-col items-center justify-center p-2 rounded-xl text-blue-600 bg-blue-50"
+        >
+          <Home className="w-6 h-6" />
+          <span className="text-[10px] font-bold mt-1 uppercase">Início</span>
+        </button>
+        <button 
+          onClick={() => router.push("/admin")}
+          className="flex flex-col items-center justify-center p-2 rounded-xl text-slate-400"
+        >
+          <LayoutDashboard className="w-6 h-6" />
+          <span className="text-[10px] font-bold mt-1 uppercase">Gestão</span>
+        </button>
+      </nav>
     </div>
   );
 }
-

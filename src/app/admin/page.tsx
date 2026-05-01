@@ -22,7 +22,8 @@ import {
   Share2,
   Star,
   Sun,
-  Zap
+  Zap,
+  Home
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Transporter } from "@/types";
@@ -150,9 +151,17 @@ export default function AdminDashboard() {
 
   const COLORS = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6'];
 
+  const navItems = [
+    { id: 'extrato', icon: Activity, label: 'Extrato' },
+    { id: 'relatorios', icon: BarChart3, label: 'Relatórios' },
+    { id: 'transportadoras', icon: Users, label: 'Empresas' },
+    { id: 'despesas', icon: Receipt, label: 'Despesas' }
+  ];
+
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row">
-      <aside className="w-full md:w-72 bg-slate-900 text-white p-8 shadow-2xl z-20 flex-shrink-0 relative overflow-hidden">
+    <div className="min-h-screen bg-slate-50 flex flex-col md:flex-row pb-20 md:pb-0">
+      {/* Sidebar Desktop */}
+      <aside className="hidden md:flex w-72 bg-slate-900 text-white p-8 shadow-2xl z-20 flex-shrink-0 flex-col relative overflow-hidden">
         <div className="absolute -top-20 -left-20 w-40 h-40 bg-blue-500 rounded-full mix-blend-overlay filter blur-3xl opacity-30"></div>
         <div className="flex items-center space-x-4 mb-12 relative z-10">
           <div className="p-3 bg-white/10 rounded-2xl backdrop-blur-md">
@@ -164,13 +173,8 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        <nav className="space-y-2 relative z-10">
-          {[
-            { id: 'extrato', icon: Activity, label: 'Extrato' },
-            { id: 'relatorios', icon: BarChart3, label: 'Relatórios' },
-            { id: 'transportadoras', icon: Users, label: 'Transportadoras' },
-            { id: 'despesas', icon: Receipt, label: 'Despesas' }
-          ].map(tab => (
+        <nav className="space-y-2 relative z-10 flex-1">
+          {navItems.map(tab => (
             <button 
               key={tab.id}
               onClick={() => setActiveTab(tab.id as Tab)}
@@ -183,55 +187,68 @@ export default function AdminDashboard() {
               {tab.label}
             </button>
           ))}
-          <Link href="/" className="flex items-center px-5 py-4 text-slate-400 hover:text-white font-bold transition-all pt-8">
-            ← Ir para Lançamentos
-          </Link>
         </nav>
+
+        <Link href="/" className="flex items-center px-5 py-4 text-slate-400 hover:text-white font-bold transition-all relative z-10">
+          <Home className="w-5 h-5 mr-3" />
+          Lançamentos
+        </Link>
       </aside>
+
+      {/* Header Mobile */}
+      <div className="md:hidden bg-slate-900 text-white p-6 flex justify-between items-center sticky top-0 z-30">
+        <div className="flex items-center space-x-3">
+          <LayoutDashboard className="w-6 h-6 text-blue-400" />
+          <h1 className="text-xl font-black">Admin</h1>
+        </div>
+        <Link href="/" className="p-2 bg-white/10 rounded-xl">
+          <Home className="w-5 h-5" />
+        </Link>
+      </div>
 
       <main className="flex-1 p-6 md:p-12 overflow-y-auto relative">
         <header className="mb-10 flex flex-col sm:flex-row justify-between items-start sm:items-end gap-6">
           <div>
-            <p className="text-blue-600 font-bold tracking-widest uppercase text-xs mb-2">Painel de Gestão</p>
+            <p className="text-blue-600 font-bold tracking-widest uppercase text-[10px] mb-2">Painel de Gestão</p>
             <h2 className="text-4xl font-black text-slate-800 tracking-tight capitalize">
               {activeTab}
             </h2>
           </div>
-          <div className="flex gap-3">
+          <div className="flex gap-3 w-full sm:w-auto">
             <button 
               onClick={handleShareLedger}
-              className="px-6 py-4 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 rounded-[1.25rem] font-bold shadow-sm transition-all flex items-center active:scale-[0.98]"
+              className="flex-1 sm:flex-none px-6 py-4 bg-white text-slate-700 border border-slate-200 hover:bg-slate-50 rounded-2xl font-bold shadow-sm transition-all flex items-center justify-center active:scale-[0.98]"
             >
-              <Share2 className="w-5 h-5 mr-2" />
+              <Share2 className="w-5 h-5 mr-2 text-blue-600" />
               Compartilhar
             </button>
             {activeTab === 'extrato' && (
               <Link 
                 href="/acertar"
-                className="px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-[1.25rem] font-bold shadow-lg transition-all flex items-center active:scale-[0.98]"
+                className="flex-1 sm:flex-none px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white rounded-2xl font-bold shadow-lg transition-all flex items-center justify-center active:scale-[0.98]"
               >
                 <ArrowDownRight className="w-6 h-6 mr-3" />
-                Receber Pagamento
+                Receber
               </Link>
             )}
           </div>
         </header>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-12">
-          <div className="glass-card p-6 border-l-4 border-blue-500">
-            <h3 className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mb-1">Saldo a Receber</h3>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+          <div className="glass-card p-6 border-l-4 border-blue-500 bg-white/60">
+            <h3 className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mb-1">Saldo a Receber</h3>
             <p className="text-2xl font-black text-slate-800">{formatCurrency(balance / 100)}</p>
           </div>
-          <div className="glass-card p-6 border-l-4 border-emerald-500">
-            <h3 className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mb-1">Lucro Líquido</h3>
+          <div className="glass-card p-6 border-l-4 border-emerald-500 bg-white/60">
+            <h3 className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mb-1">Lucro Líquido</h3>
             <p className="text-2xl font-black text-emerald-600">{formatCurrency(netProfit / 100)}</p>
           </div>
-          <div className="glass-card p-6 border-l-4 border-amber-500">
-            <h3 className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mb-1">Fretes Brutos</h3>
+          <div className="glass-card p-6 border-l-4 border-amber-500 bg-white/60">
+            <h3 className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mb-1">Total Bruto</h3>
             <p className="text-2xl font-black text-slate-800">{formatCurrency(freights.reduce((acc, f) => acc + (f.canceled ? 0 : f.amount), 0) / 100)}</p>
           </div>
-          <div className="glass-card p-6 border-l-4 border-red-500">
-            <h3 className="text-slate-500 font-bold uppercase text-[10px] tracking-widest mb-1">Despesas Totais</h3>
+          <div className="glass-card p-6 border-l-4 border-red-500 bg-white/60">
+            <h3 className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mb-1">Despesas</h3>
             <p className="text-2xl font-black text-red-600">{formatCurrency(expenses.reduce((acc, e) => acc + (e.canceled ? 0 : e.amount), 0) / 100)}</p>
           </div>
         </div>
@@ -276,12 +293,15 @@ export default function AdminDashboard() {
                           </td>
                           <td className="p-4 text-center">
                             {!item.canceled && (
-                              <button onClick={() => cancelRecord(item.type, item.id)} className="text-slate-300 hover:text-red-500"><Trash2 className="w-5 h-5" /></button>
+                              <button onClick={() => cancelRecord(item.type, item.id)} className="text-slate-300 hover:text-red-500 transition-colors"><Trash2 className="w-5 h-5" /></button>
                             )}
                           </td>
                         </tr>
                       );
                     })}
+                    {timeline.length === 0 && (
+                      <tr><td colSpan={5} className="p-10 text-center text-slate-400 font-medium">Nenhum lançamento encontrado.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -291,35 +311,39 @@ export default function AdminDashboard() {
           {activeTab === 'relatorios' && (
             <motion.div key="relatorios" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <div className="glass-card p-8 h-[400px]">
+                <div className="glass-card p-8 min-h-[400px]">
                   <h3 className="font-bold text-slate-800 mb-6 flex items-center">
                     <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
                     Fluxo Diário (Mês Atual)
                   </h3>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart data={chartData}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
-                      <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
-                      <YAxis fontSize={12} tickLine={false} axisLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
-                      <Line type="monotone" dataKey="fretes" stroke="#3b82f6" strokeWidth={3} dot={false} name="Faturamento" />
-                      <Line type="monotone" dataKey="despesas" stroke="#ef4444" strokeWidth={3} dot={false} name="Despesas" />
-                    </LineChart>
-                  </ResponsiveContainer>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <LineChart data={chartData}>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
+                        <XAxis dataKey="name" fontSize={12} tickLine={false} axisLine={false} />
+                        <YAxis fontSize={12} tickLine={false} axisLine={false} />
+                        <Tooltip contentStyle={{ borderRadius: '1rem', border: 'none', boxShadow: '0 10px 15px -3px rgb(0 0 0 / 0.1)' }} />
+                        <Line type="monotone" dataKey="fretes" stroke="#3b82f6" strokeWidth={3} dot={false} name="Faturamento" />
+                        <Line type="monotone" dataKey="despesas" stroke="#ef4444" strokeWidth={3} dot={false} name="Despesas" />
+                      </LineChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
-                <div className="glass-card p-8 h-[400px]">
+                <div className="glass-card p-8 min-h-[400px]">
                   <h3 className="font-bold text-slate-800 mb-6 flex items-center">
                     <Users className="w-5 h-5 mr-2 text-purple-500" />
                     Volume por Transportadora
                   </h3>
-                  <ResponsiveContainer width="100%" height="100%">
-                    <PieChart>
-                      <Pie data={transporterStats} innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value">
-                        {transporterStats.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
-                      </Pie>
-                      <Tooltip />
-                    </PieChart>
-                  </ResponsiveContainer>
+                  <div className="h-[300px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie data={transporterStats} innerRadius={80} outerRadius={120} paddingAngle={5} dataKey="value">
+                          {transporterStats.map((entry, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
                 </div>
               </div>
             </motion.div>
@@ -329,36 +353,41 @@ export default function AdminDashboard() {
             <motion.div key="transportadoras" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
               <div className="glass-card p-8">
                 <h3 className="font-bold text-slate-800 mb-6">Cadastrar Nova</h3>
-                <form onSubmit={handleAddTransporter} className="flex flex-col md:flex-row gap-4">
-                  <input type="text" placeholder="Nome" value={newTransporter.name} onChange={e => setNewTransporter({...newTransporter, name: e.target.value})} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none" />
-                  <select value={newTransporter.icon} onChange={e => setNewTransporter({...newTransporter, icon: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
-                    <option value="Truck">Caminhão</option>
-                    <option value="Star">Estrela</option>
-                    <option value="Sun">Sol</option>
-                    <option value="Zap">Cometa</option>
-                  </select>
-                  <select value={newTransporter.color} onChange={e => setNewTransporter({...newTransporter, color: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
-                    <option value="bg-blue-600">Azul</option>
-                    <option value="bg-amber-600">Laranja</option>
-                    <option value="bg-emerald-600">Verde</option>
-                    <option value="bg-red-600">Vermelho</option>
-                    <option value="bg-purple-600">Roxo</option>
-                  </select>
-                  <button type="submit" className="bg-blue-600 text-white px-6 py-3 rounded-xl font-bold">Adicionar</button>
+                <form onSubmit={handleAddTransporter} className="flex flex-col lg:flex-row gap-4">
+                  <input type="text" placeholder="Nome" value={newTransporter.name} onChange={e => setNewTransporter({...newTransporter, name: e.target.value})} className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-500/20 transition-all" />
+                  <div className="flex gap-4">
+                    <select value={newTransporter.icon} onChange={e => setNewTransporter({...newTransporter, icon: e.target.value})} className="flex-1 lg:flex-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
+                      <option value="Truck">Caminhão</option>
+                      <option value="Star">Estrela</option>
+                      <option value="Sun">Sol</option>
+                      <option value="Zap">Cometa</option>
+                    </select>
+                    <select value={newTransporter.color} onChange={e => setNewTransporter({...newTransporter, color: e.target.value})} className="flex-1 lg:flex-none bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none">
+                      <option value="bg-blue-600">Azul</option>
+                      <option value="bg-amber-600">Laranja</option>
+                      <option value="bg-emerald-600">Verde</option>
+                      <option value="bg-red-600">Vermelho</option>
+                      <option value="bg-purple-600">Roxo</option>
+                    </select>
+                  </div>
+                  <button type="submit" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all">Adicionar</button>
                 </form>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {transporters.map(t => {
                   const Icon = ICONS[t.icon] || Truck;
                   return (
-                    <div key={t.id} className="glass-card p-6 flex items-center justify-between">
+                    <div key={t.id} className="glass-card p-6 flex items-center justify-between bg-white/60 hover:bg-white transition-colors">
                       <div className="flex items-center space-x-4">
-                        <div className={cn("w-10 h-10 rounded-xl flex items-center justify-center text-white", t.color)}>
-                          <Icon className="w-5 h-5" />
+                        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-sm", t.color)}>
+                          <Icon className="w-6 h-6" />
                         </div>
-                        <h4 className="font-bold text-slate-800">{t.name}</h4>
+                        <div>
+                          <h4 className="font-bold text-slate-800">{t.name}</h4>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">{t.active ? 'Ativa' : 'Inativa'}</p>
+                        </div>
                       </div>
-                      <button onClick={() => manageTransporter({ ...t, active: !t.active })} className={cn("p-2 rounded-lg transition-colors", t.active ? "text-emerald-500 hover:bg-emerald-50" : "text-slate-300 hover:bg-slate-100")}>
+                      <button onClick={() => manageTransporter({ ...t, active: !t.active })} className={cn("p-2 rounded-xl transition-all", t.active ? "text-emerald-500 bg-emerald-50" : "text-slate-300 bg-slate-50")}>
                         <CheckCircle2 className="w-6 h-6" />
                       </button>
                     </div>
@@ -372,10 +401,10 @@ export default function AdminDashboard() {
             <motion.div key="despesas" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
               <div className="glass-card p-8">
                 <h3 className="font-bold text-slate-800 mb-6">Lançar Despesa</h3>
-                <form onSubmit={handleAddExpense} className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <input type="text" placeholder="Categoria" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none" />
-                  <input type="text" placeholder="Valor (R$)" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value.replace(/\D/g, "")})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none" />
-                  <button type="submit" className="bg-red-500 text-white px-6 py-3 rounded-xl font-bold">Lançar</button>
+                <form onSubmit={handleAddExpense} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <input type="text" placeholder="Categoria" value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-500/20" />
+                  <input type="text" placeholder="Valor (R$)" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value.replace(/\D/g, "")})} className="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-red-500/20" />
+                  <button type="submit" className="bg-red-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-500/20 active:scale-[0.98] transition-all">Lançar</button>
                 </form>
               </div>
               <div className="glass-card overflow-hidden">
@@ -385,17 +414,17 @@ export default function AdminDashboard() {
                       <th className="p-4">Data</th>
                       <th className="p-4">Categoria</th>
                       <th className="p-4 text-right">Valor</th>
-                      <th className="p-4"></th>
+                      <th className="p-4 text-center">Ação</th>
                     </tr>
                   </thead>
                   <tbody>
                     {expenses.map(e => (
                       <tr key={e.id} className={cn("border-b", e.canceled && "opacity-40")}>
-                        <td className="p-4 text-sm">{format(new Date(e.createdAt), "dd/MM/yyyy")}</td>
-                        <td className="p-4 font-bold">{e.category}</td>
+                        <td className="p-4 text-sm font-medium text-slate-500">{format(new Date(e.createdAt), "dd/MM/yyyy")}</td>
+                        <td className="p-4 font-bold text-slate-700">{e.category}</td>
                         <td className="p-4 text-right text-red-600 font-bold">{formatCurrency(e.amount / 100)}</td>
                         <td className="p-4 text-center">
-                          <button onClick={() => cancelRecord('expense', e.id)} className="text-slate-300 hover:text-red-500">
+                          <button onClick={() => cancelRecord('expense', e.id)} className="text-slate-300 hover:text-red-500 transition-colors">
                             <Trash2 className="w-5 h-5" />
                           </button>
                         </td>
@@ -408,6 +437,23 @@ export default function AdminDashboard() {
           )}
         </AnimatePresence>
       </main>
+
+      {/* Bottom Nav Mobile */}
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 flex justify-around items-center p-3 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+        {navItems.map(item => (
+          <button 
+            key={item.id}
+            onClick={() => setActiveTab(item.id as Tab)}
+            className={cn(
+              "flex flex-col items-center justify-center p-2 rounded-xl transition-all",
+              activeTab === item.id ? "text-blue-600 bg-blue-50" : "text-slate-400"
+            )}
+          >
+            <item.icon className="w-6 h-6" />
+            <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">{item.label}</span>
+          </button>
+        ))}
+      </nav>
     </div>
   );
 }

@@ -22,6 +22,7 @@ export function useLedger() {
   const [transporters, setTransporters] = useState<Transporter[]>([]);
   const [expenses, setExpenses] = useState<ExpenseRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadedFlags, setLoadedFlags] = useState({ freights: false, payments: false, transporters: false, expenses: false });
 
   useEffect(() => {
     // Listen to Transporters
@@ -29,6 +30,7 @@ export function useLedger() {
     const unsubTransporters = onSnapshot(transportersQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transporter));
       setTransporters(data);
+      setLoadedFlags(prev => ({ ...prev, transporters: true }));
     });
 
     // Listen to Freights
@@ -36,6 +38,7 @@ export function useLedger() {
     const unsubFreights = onSnapshot(freightsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FreightRecord));
       setFreights(data);
+      setLoadedFlags(prev => ({ ...prev, freights: true }));
     });
 
     // Listen to Payments
@@ -43,6 +46,7 @@ export function useLedger() {
     const unsubPayments = onSnapshot(paymentsQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentRecord));
       setPayments(data);
+      setLoadedFlags(prev => ({ ...prev, payments: true }));
     });
 
     // Listen to Expenses
@@ -50,25 +54,23 @@ export function useLedger() {
     const unsubExpenses = onSnapshot(expensesQuery, (snapshot) => {
       const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExpenseRecord));
       setExpenses(data);
+      setLoadedFlags(prev => ({ ...prev, expenses: true }));
     });
-
-    // Simple loading check
-    const checkAllLoaded = () => {
-      // In a real app we would track each separately, but for now:
-      setLoading(false);
-    };
-
-    // Delay a bit to let snapshots arrive
-    const timer = setTimeout(checkAllLoaded, 1000);
 
     return () => {
       unsubTransporters();
       unsubFreights();
       unsubPayments();
       unsubExpenses();
-      clearTimeout(timer);
     };
   }, []);
+
+  useEffect(() => {
+    if (Object.values(loadedFlags).every(v => v)) {
+      setLoading(false);
+    }
+  }, [loadedFlags]);
+
 
   const totalFreights = freights.filter(f => !f.canceled).reduce((acc, f) => acc + f.amount, 0);
   const totalPayments = payments.filter(p => !p.canceled).reduce((acc, p) => acc + p.amount, 0);
