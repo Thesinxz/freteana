@@ -11,7 +11,9 @@ import {
   subMonths, 
   startOfDay, 
   endOfDay,
-  isWithinInterval
+  isWithinInterval,
+  parseISO,
+  isValid
 } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import { 
@@ -91,9 +93,8 @@ export default function AdminDashboard() {
 
   const [activeTab, setActiveTab] = useState<Tab>('extrato');
   const [darkMode, setDarkMode] = useState(false);
-  const [profitGoal, setProfitGoal] = useState(5000); // R$ 5.000,00 default
+  const [profitGoal, setProfitGoal] = useState(5000); 
   
-  // Date Filter
   const [dateRange, setDateRange] = useState({
     start: startOfMonth(new Date()),
     end: endOfMonth(new Date())
@@ -102,49 +103,77 @@ export default function AdminDashboard() {
   const [newTransporter, setNewTransporter] = useState({ name: '', color: 'bg-blue-600', icon: 'Truck' });
   const [newExpense, setNewExpense] = useState({ category: EXPENSE_CATEGORIES[0], amount: '', note: '' });
 
-  // Filtered Data based on Date Range
+  // Safety check for date range
+  const safeDateRange = useMemo(() => {
+    let start = dateRange.start;
+    let end = dateRange.end;
+    if (!isValid(start)) start = startOfMonth(new Date());
+    if (!isValid(end)) end = endOfMonth(new Date());
+    if (start > end) {
+      const temp = start;
+      start = end;
+      end = temp;
+    }
+    return { start, end };
+  }, [dateRange]);
+
   const filteredData = useMemo(() => {
     const filterByDate = (item: any) => {
+      if (!item.createdAt) return false;
       const date = new Date(item.createdAt);
-      return isWithinInterval(date, { start: startOfDay(dateRange.start), end: endOfDay(dateRange.end) });
+      if (!isValid(date)) return false;
+      return isWithinInterval(date, { 
+        start: startOfDay(safeDateRange.start), 
+        end: endOfDay(safeDateRange.end) 
+      });
     };
 
     return {
-      freights: freights.filter(filterByDate),
-      payments: payments.filter(filterByDate),
-      expenses: expenses.filter(filterByDate)
+      freights: (freights || []).filter(filterByDate),
+      payments: (payments || []).filter(filterByDate),
+      expenses: (expenses || []).filter(filterByDate)
     };
-  }, [freights, payments, expenses, dateRange]);
+  }, [freights, payments, expenses, safeDateRange]);
 
   const stats = useMemo(() => {
     const f = filteredData.freights.filter(f => !f.canceled).reduce((acc, f) => acc + f.amount, 0);
     const p = filteredData.payments.filter(p => !p.canceled).reduce((acc, p) => acc + p.amount, 0);
     const e = filteredData.expenses.filter(e => !e.canceled).reduce((acc, e) => acc + e.amount, 0);
+    const goal = profitGoal > 0 ? profitGoal : 1;
+    const net = f - e;
+    
     return {
       totalFreights: f,
       totalPayments: p,
       totalExpenses: e,
       balance: f - p,
-      netProfit: f - e,
-      profitPercentage: Math.min(Math.round(((f - e) / (profitGoal * 100)) * 100), 100)
+      netProfit: net,
+      profitPercentage: Math.max(0, Math.min(Math.round((net / (goal * 100)) * 100), 100))
     };
   }, [filteredData, profitGoal]);
 
   const chartData = useMemo(() => {
-    const days = eachDayOfInterval({ start: dateRange.start, end: dateRange.end });
-    return days.map(day => {
-      const dayFreights = filteredData.freights.filter(f => !f.canceled && isSameDay(new Date(f.createdAt), day));
-      const dayExpenses = filteredData.expenses.filter(e => !e.canceled && isSameDay(new Date(e.createdAt), day));
-      return {
-        name: format(day, "dd/MM"),
-        fretes: dayFreights.reduce((acc, f) => acc + f.amount / 100, 0),
-        despesas: dayExpenses.reduce((acc, e) => acc + e.amount / 100, 0),
-      };
-    });
-  }, [filteredData, dateRange]);
+    try {
+      const days = eachDayOfInterval({ start: safeDateRange.start, end: safeDateRange.end });
+      // Limit to 62 days to avoid browser crash on extreme ranges
+      const limitedDays = days.slice(-62); 
+      
+      return limitedDays.map(day => {
+        const dayFreights = filteredData.freights.filter(f => !f.canceled && isSameDay(new Date(f.createdAt), day));
+        const dayExpenses = filteredData.expenses.filter(e => !e.canceled && isSameDay(new Date(e.createdAt), day));
+        return {
+          name: format(day, "dd/MM"),
+          fretes: dayFreights.reduce((acc, f) => acc + f.amount / 100, 0),
+          despesas: dayExpenses.reduce((acc, e) => acc + e.amount / 100, 0),
+        };
+      });
+    } catch (e) {
+      return [];
+    }
+  }, [filteredData, safeDateRange]);
 
   const transporterStats = useMemo(() => {
-    return transporters.map(t => {
+    return (transporters || []).map(t => {
       const tFreights = filteredData.freights.filter(f => !f.canceled && f.transportId === t.id);
       return {
         name: t.name,
@@ -153,17 +182,15 @@ export default function AdminDashboard() {
     }).filter(s => s.value > 0);
   }, [filteredData, transporters]);
 
-  const handlePrint = () => {
-    window.print();
-  };
+  const handlePrint = () => window.print();
 
   const handleShareLedger = () => {
     let message = `*Extrato - Painel da Ana*\n`;
-    message += `Período: ${format(dateRange.start, "dd/MM")} até ${format(dateRange.end, "dd/MM")}\n\n`;
+    message += `Período: ${format(safeDateRange.start, "dd/MM")} até ${format(safeDateRange.end, "dd/MM")}\n\n`;
     message += `*Saldo a Receber:* ${formatCurrency(stats.balance / 100)}\n`;
     message += `*Lucro Líquido:* ${formatCurrency(stats.netProfit / 100)}\n\n`;
     message += `Transportadoras:\n`;
-    transporters.filter(t => t.active).forEach(t => {
+    (transporters || []).filter(t => t.active).forEach(t => {
       const tFreights = filteredData.freights.filter(f => !f.canceled && f.transportId === t.id);
       const total = tFreights.reduce((acc, f) => acc + f.amount, 0);
       if (total > 0) message += `• ${t.name}: ${formatCurrency(total / 100)}\n`;
@@ -193,12 +220,18 @@ export default function AdminDashboard() {
     { id: 'despesas', icon: Receipt, label: 'Despesas' }
   ];
 
+  const handleDateChange = (type: 'start' | 'end', value: string) => {
+    const date = parseISO(value);
+    if (isValid(date)) {
+      setDateRange(prev => ({ ...prev, [type]: date }));
+    }
+  };
+
   return (
     <div className={cn("min-h-screen flex flex-col md:flex-row pb-20 md:pb-0 transition-colors duration-500", darkMode ? "bg-slate-950 text-slate-100" : "bg-slate-50 text-slate-900")}>
-      {/* Print Overlay (Hidden on Screen) */}
       <div className="hidden print:block p-10 bg-white text-black">
         <h1 className="text-3xl font-black mb-4">Relatório de Gestão - Ana</h1>
-        <p className="mb-8 font-bold">Período: {format(dateRange.start, "dd/MM/yyyy")} - {format(dateRange.end, "dd/MM/yyyy")}</p>
+        <p className="mb-8 font-bold">Período: {format(safeDateRange.start, "dd/MM/yyyy")} - {format(safeDateRange.end, "dd/MM/yyyy")}</p>
         <div className="grid grid-cols-2 gap-8 mb-10">
           <div className="border p-4"><h3>Lucro Líquido</h3><p className="text-2xl font-bold">{formatCurrency(stats.netProfit/100)}</p></div>
           <div className="border p-4"><h3>Saldo a Receber</h3><p className="text-2xl font-bold">{formatCurrency(stats.balance/100)}</p></div>
@@ -217,7 +250,6 @@ export default function AdminDashboard() {
         </table>
       </div>
 
-      {/* Sidebar Desktop */}
       <aside className={cn("hidden md:flex w-72 p-8 shadow-2xl z-20 flex-shrink-0 flex-col relative overflow-hidden transition-colors", darkMode ? "bg-slate-900" : "bg-slate-900")}>
         <div className="absolute -top-20 -left-20 w-40 h-40 bg-blue-500 rounded-full mix-blend-overlay filter blur-3xl opacity-30"></div>
         <div className="flex items-center space-x-4 mb-12 relative z-10">
@@ -278,38 +310,29 @@ export default function AdminDashboard() {
             <div className={cn("flex items-center rounded-2xl border p-1 shadow-sm", darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200")}>
               <input 
                 type="date" 
-                value={format(dateRange.start, "yyyy-MM-dd")}
-                onChange={(e) => setDateRange(prev => ({ ...prev, start: new Date(e.target.value) }))}
+                value={format(safeDateRange.start, "yyyy-MM-dd")}
+                onChange={(e) => handleDateChange('start', e.target.value)}
                 className="bg-transparent px-3 py-2 text-sm font-bold outline-none"
               />
               <span className="text-slate-400 px-1">→</span>
               <input 
                 type="date" 
-                value={format(dateRange.end, "yyyy-MM-dd")}
-                onChange={(e) => setDateRange(prev => ({ ...prev, end: new Date(e.target.value) }))}
+                value={format(safeDateRange.end, "yyyy-MM-dd")}
+                onChange={(e) => handleDateChange('end', e.target.value)}
                 className="bg-transparent px-3 py-2 text-sm font-bold outline-none"
               />
             </div>
             
-            <button 
-              onClick={handlePrint}
-              className={cn("px-6 py-4 rounded-2xl font-bold shadow-sm transition-all flex items-center active:scale-95", darkMode ? "bg-slate-900 border border-slate-800 text-slate-300" : "bg-white border border-slate-200 text-slate-700")}
-            >
-              <FileDown className="w-5 h-5 mr-2 text-blue-500" />
-              PDF
+            <button onClick={handlePrint} className={cn("px-6 py-4 rounded-2xl font-bold shadow-sm transition-all flex items-center active:scale-95", darkMode ? "bg-slate-900 border border-slate-800 text-slate-300" : "bg-white border border-slate-200 text-slate-700")}>
+              <FileDown className="w-5 h-5 mr-2 text-blue-500" /> PDF
             </button>
             
-            <button 
-              onClick={handleShareLedger}
-              className={cn("px-6 py-4 rounded-2xl font-bold shadow-sm transition-all flex items-center active:scale-95", darkMode ? "bg-slate-900 border border-slate-800 text-slate-300" : "bg-white border border-slate-200 text-slate-700")}
-            >
-              <Share2 className="w-5 h-5 mr-2 text-emerald-500" />
-              WhatsApp
+            <button onClick={handleShareLedger} className={cn("px-6 py-4 rounded-2xl font-bold shadow-sm transition-all flex items-center active:scale-95", darkMode ? "bg-slate-900 border border-slate-800 text-slate-300" : "bg-white border border-slate-200 text-slate-700")}>
+              <Share2 className="w-5 h-5 mr-2 text-emerald-500" /> WhatsApp
             </button>
           </div>
         </header>
 
-        {/* Dashboard Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-10">
           <div className={cn("glass-card p-6 border-l-4 border-blue-500", darkMode ? "bg-slate-900/50" : "bg-white/60")}>
             <h3 className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mb-1">Saldo a Receber</h3>
@@ -325,10 +348,8 @@ export default function AdminDashboard() {
           </div>
           <div className={cn("glass-card p-6 border-l-4 border-red-500", darkMode ? "bg-slate-900/50" : "bg-white/60")}>
             <h3 className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mb-1">Despesas</h3>
-            <p className="text-2xl font-black text-red-500">{formatCurrency(stats.totalExpenses / 100)}</p>
+            <p className="text-2xl font-black text-red-600">{formatCurrency(stats.totalExpenses / 100)}</p>
           </div>
-          
-          {/* Profit Goal Card */}
           <div className={cn("glass-card p-6 border-l-4 border-purple-500 relative overflow-hidden", darkMode ? "bg-slate-900/50" : "bg-white/60")}>
             <div className="relative z-10">
               <h3 className="text-slate-500 font-bold uppercase text-[9px] tracking-widest mb-1">Meta de Lucro</h3>
@@ -337,11 +358,7 @@ export default function AdminDashboard() {
                 <p className="text-[10px] text-slate-400 mb-1">de {formatCurrency(profitGoal)}</p>
               </div>
               <div className="w-full bg-slate-200 dark:bg-slate-800 h-2 rounded-full mt-3 overflow-hidden">
-                <motion.div 
-                  initial={{ width: 0 }}
-                  animate={{ width: `${stats.profitPercentage}%` }}
-                  className="h-full bg-purple-500"
-                />
+                <motion.div initial={{ width: 0 }} animate={{ width: `${stats.profitPercentage}%` }} className="h-full bg-purple-500" />
               </div>
             </div>
             <Trophy className="absolute -bottom-2 -right-2 w-12 h-12 text-purple-500/10" />
@@ -394,9 +411,6 @@ export default function AdminDashboard() {
                         </tr>
                       );
                     })}
-                    {timeline.length === 0 && (
-                      <tr><td colSpan={5} className="p-10 text-center text-slate-500 font-medium">Nenhum lançamento no período selecionado.</td></tr>
-                    )}
                   </tbody>
                 </table>
               </div>
@@ -407,10 +421,7 @@ export default function AdminDashboard() {
             <motion.div key="relatorios" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-8">
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
                 <div className={cn("glass-card p-8 min-h-[400px]", darkMode ? "bg-slate-900/50" : "bg-white/60")}>
-                  <h3 className="font-bold mb-6 flex items-center">
-                    <BarChart3 className="w-5 h-5 mr-2 text-blue-500" />
-                    Fluxo Diário
-                  </h3>
+                  <h3 className="font-bold mb-6 flex items-center"><BarChart3 className="w-5 h-5 mr-2 text-blue-500" /> Fluxo Diário</h3>
                   <div className="h-[300px]">
                     <ResponsiveContainer width="100%" height="100%">
                       <LineChart data={chartData}>
@@ -424,34 +435,11 @@ export default function AdminDashboard() {
                     </ResponsiveContainer>
                   </div>
                 </div>
-                
-                {/* Meta Edit Card */}
                 <div className={cn("glass-card p-8 min-h-[400px] flex flex-col", darkMode ? "bg-slate-900/50" : "bg-white/60")}>
-                  <h3 className="font-bold mb-6 flex items-center">
-                    <Target className="w-5 h-5 mr-2 text-purple-500" />
-                    Configurar Meta de Lucro
-                  </h3>
+                  <h3 className="font-bold mb-6 flex items-center"><Target className="w-5 h-5 mr-2 text-purple-500" /> Configurar Meta</h3>
                   <div className="flex-1 flex flex-col justify-center items-center">
-                    <div className="text-center mb-6">
-                      <p className="text-sm text-slate-500 font-bold uppercase tracking-widest mb-2">Meta Atual</p>
-                      <p className="text-5xl font-black text-purple-500">{formatCurrency(profitGoal)}</p>
-                    </div>
-                    <input 
-                      type="range" 
-                      min="1000" 
-                      max="20000" 
-                      step="500" 
-                      value={profitGoal}
-                      onChange={(e) => setProfitGoal(parseInt(e.target.value))}
-                      className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500 mb-8"
-                    />
-                    <div className="grid grid-cols-3 gap-4 w-full">
-                      {[3000, 5000, 10000].map(val => (
-                        <button key={val} onClick={() => setProfitGoal(val)} className={cn("py-3 rounded-xl font-bold text-sm transition-all", profitGoal === val ? "bg-purple-500 text-white shadow-lg" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}>
-                          {formatCurrency(val)}
-                        </button>
-                      ))}
-                    </div>
+                    <p className="text-5xl font-black text-purple-500 mb-6">{formatCurrency(profitGoal)}</p>
+                    <input type="range" min="1000" max="20000" step="500" value={profitGoal} onChange={(e) => setProfitGoal(parseInt(e.target.value))} className="w-full h-2 bg-slate-200 dark:bg-slate-800 rounded-lg appearance-none cursor-pointer accent-purple-500 mb-8" />
                   </div>
                 </div>
               </div>
@@ -461,40 +449,20 @@ export default function AdminDashboard() {
           {activeTab === 'transportadoras' && (
             <motion.div key="transportadoras" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
               <div className={cn("glass-card p-8", darkMode ? "bg-slate-900/50" : "bg-white/60")}>
-                <h3 className="font-bold mb-6">Cadastrar Nova Empresa</h3>
-                <form onSubmit={handleAddTransporter} className="flex flex-col lg:flex-row gap-4">
-                  <input type="text" placeholder="Nome" value={newTransporter.name} onChange={e => setNewTransporter({...newTransporter, name: e.target.value})} className={cn("flex-1 border rounded-xl px-4 py-3 outline-none focus:ring-2 transition-all", darkMode ? "bg-slate-800 border-slate-700 focus:ring-blue-500/20" : "bg-slate-50 border-slate-200 focus:ring-blue-500/20")} />
-                  <div className="flex gap-4">
-                    <select value={newTransporter.icon} onChange={e => setNewTransporter({...newTransporter, icon: e.target.value})} className={cn("flex-1 lg:flex-none border rounded-xl px-4 py-3 outline-none", darkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200")}>
-                      <option value="Truck">Caminhão</option>
-                      <option value="Star">Estrela</option>
-                      <option value="Sun">Sol</option>
-                      <option value="Zap">Cometa</option>
-                    </select>
-                    <select value={newTransporter.color} onChange={e => setNewTransporter({...newTransporter, color: e.target.value})} className={cn("flex-1 lg:flex-none border rounded-xl px-4 py-3 outline-none", darkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200")}>
-                      <option value="bg-blue-600">Azul</option>
-                      <option value="bg-amber-600">Laranja</option>
-                      <option value="bg-emerald-600">Verde</option>
-                      <option value="bg-red-600">Vermelho</option>
-                      <option value="bg-purple-600">Roxo</option>
-                    </select>
-                  </div>
-                  <button type="submit" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-[0.98] transition-all">Adicionar</button>
+                <h3 className="font-bold mb-6">Nova Empresa</h3>
+                <form onSubmit={(e) => { e.preventDefault(); manageTransporter(newTransporter as any); }} className="flex flex-col lg:flex-row gap-4">
+                  <input type="text" placeholder="Nome" value={newTransporter.name} onChange={e => setNewTransporter({...newTransporter, name: e.target.value})} className={cn("flex-1 border rounded-xl px-4 py-3 outline-none focus:ring-2 transition-all", darkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200")} />
+                  <button type="submit" className="bg-blue-600 text-white px-8 py-3 rounded-xl font-bold shadow-lg shadow-blue-500/20 active:scale-[0.98]">Adicionar</button>
                 </form>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {transporters.map(t => {
+                {(transporters || []).map(t => {
                   const Icon = ICONS[t.icon] || Truck;
                   return (
-                    <div key={t.id} className={cn("glass-card p-6 flex items-center justify-between transition-colors", darkMode ? "bg-slate-900/40 hover:bg-slate-900/60" : "bg-white/60 hover:bg-white")}>
+                    <div key={t.id} className={cn("glass-card p-6 flex items-center justify-between", darkMode ? "bg-slate-900/40" : "bg-white/60")}>
                       <div className="flex items-center space-x-4">
-                        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white shadow-sm", t.color)}>
-                          <Icon className="w-6 h-6" />
-                        </div>
-                        <div>
-                          <h4 className="font-bold">{t.name}</h4>
-                          <p className="text-[10px] text-slate-500 font-bold uppercase tracking-widest">{t.active ? 'Ativa' : 'Inativa'}</p>
-                        </div>
+                        <div className={cn("w-12 h-12 rounded-2xl flex items-center justify-center text-white", t.color)}><Icon className="w-6 h-6" /></div>
+                        <div><h4 className="font-bold">{t.name}</h4><p className="text-[10px] text-slate-500 font-bold uppercase">{t.active ? 'Ativa' : 'Inativa'}</p></div>
                       </div>
                       <button onClick={() => manageTransporter({ ...t, active: !t.active })} className={cn("p-2 rounded-xl transition-all", t.active ? "text-emerald-500 bg-emerald-100/20" : "text-slate-500 bg-slate-100/20")}>
                         <CheckCircle2 className="w-6 h-6" />
@@ -509,69 +477,23 @@ export default function AdminDashboard() {
           {activeTab === 'despesas' && (
             <motion.div key="despesas" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
               <div className={cn("glass-card p-8", darkMode ? "bg-slate-900/50" : "bg-white/60")}>
-                <h3 className="font-bold mb-6">Lançar Nova Despesa</h3>
+                <h3 className="font-bold mb-6">Nova Despesa</h3>
                 <form onSubmit={handleAddExpense} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  <select 
-                    value={newExpense.category} 
-                    onChange={e => setNewExpense({...newExpense, category: e.target.value})} 
-                    className={cn("border rounded-xl px-4 py-3 outline-none focus:ring-2 transition-all", darkMode ? "bg-slate-800 border-slate-700 focus:ring-red-500/20" : "bg-slate-50 border-slate-200 focus:ring-red-500/20")}
-                  >
-                    {EXPENSE_CATEGORIES.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
+                  <select value={newExpense.category} onChange={e => setNewExpense({...newExpense, category: e.target.value})} className={cn("border rounded-xl px-4 py-3 outline-none", darkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200")}>
+                    {EXPENSE_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
                   </select>
-                  <input 
-                    type="text" 
-                    placeholder="Valor (R$)" 
-                    value={newExpense.amount} 
-                    onChange={e => setNewExpense({...newExpense, amount: e.target.value.replace(/\D/g, "")})} 
-                    className={cn("border rounded-xl px-4 py-3 outline-none focus:ring-2 transition-all", darkMode ? "bg-slate-800 border-slate-700 focus:ring-red-500/20" : "bg-slate-50 border-slate-200 focus:ring-red-500/20")}
-                  />
-                  <button type="submit" className="bg-red-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-500/20 active:scale-[0.98] transition-all">Lançar</button>
+                  <input type="text" placeholder="Valor" value={newExpense.amount} onChange={e => setNewExpense({...newExpense, amount: e.target.value.replace(/\D/g, "")})} className={cn("border rounded-xl px-4 py-3 outline-none", darkMode ? "bg-slate-800 border-slate-700" : "bg-slate-50 border-slate-200")} />
+                  <button type="submit" className="bg-red-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-red-500/20">Lançar</button>
                 </form>
-              </div>
-              <div className={cn("glass-card overflow-hidden", darkMode ? "bg-slate-900/50" : "bg-white/60")}>
-                <table className="w-full text-left">
-                  <thead>
-                    <tr className={cn("text-[10px] uppercase font-bold tracking-widest border-b", darkMode ? "bg-slate-800/50 border-slate-800 text-slate-400" : "bg-slate-50 border-slate-100 text-slate-500")}>
-                      <th className="p-4">Data</th>
-                      <th className="p-4">Categoria</th>
-                      <th className="p-4 text-right">Valor</th>
-                      <th className="p-4 text-center">Ação</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredData.expenses.map(e => (
-                      <tr key={e.id} className={cn("border-b transition-colors", e.canceled && "opacity-40", darkMode ? "border-slate-800/50 hover:bg-white/5" : "border-slate-50 hover:bg-slate-50")}>
-                        <td className="p-4 text-sm font-medium text-slate-500">{format(new Date(e.createdAt), "dd/MM/yyyy")}</td>
-                        <td className="p-4 font-bold">{e.category}</td>
-                        <td className="p-4 text-right text-red-500 font-bold">{formatCurrency(e.amount / 100)}</td>
-                        <td className="p-4 text-center">
-                          <button onClick={() => cancelRecord('expense', e.id)} className="text-slate-500 hover:text-red-500 transition-colors">
-                            <Trash2 className="w-5 h-5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
               </div>
             </motion.div>
           )}
         </AnimatePresence>
       </main>
 
-      {/* Bottom Nav Mobile */}
-      <nav className={cn("md:hidden fixed bottom-0 left-0 right-0 border-t flex justify-around items-center p-3 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.1)] transition-colors", darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100")}>
+      <nav className={cn("md:hidden fixed bottom-0 left-0 right-0 border-t flex justify-around items-center p-3 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.1)]", darkMode ? "bg-slate-900 border-slate-800" : "bg-white border-slate-100")}>
         {navItems.map(item => (
-          <button 
-            key={item.id}
-            onClick={() => setActiveTab(item.id as Tab)}
-            className={cn(
-              "flex flex-col items-center justify-center p-2 rounded-xl transition-all",
-              activeTab === item.id ? (darkMode ? "text-blue-400 bg-blue-500/10" : "text-blue-600 bg-blue-50") : "text-slate-500"
-            )}
-          >
+          <button key={item.id} onClick={() => setActiveTab(item.id as Tab)} className={cn("flex flex-col items-center justify-center p-2 rounded-xl transition-all", activeTab === item.id ? (darkMode ? "text-blue-400 bg-blue-500/10" : "text-blue-600 bg-blue-50") : "text-slate-500")}>
             <item.icon className="w-6 h-6" />
             <span className="text-[10px] font-bold mt-1 uppercase tracking-tighter">{item.label}</span>
           </button>
