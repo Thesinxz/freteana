@@ -71,6 +71,32 @@ export default function DashboardPage() {
     window.open(url, '_blank');
   };
 
+  const handleShareAll = () => {
+    let message = `*Resumo Geral de Fretes*\n\n`;
+    let grandTotal = 0;
+
+    sortedDates.forEach(dateStr => {
+      const dayFreights = groupedFreights[dateStr];
+      const dateObj = parseISO(dateStr);
+      const dateFormatted = format(dateObj, "dd/MM/yyyy");
+      
+      message += `*--- ${dateFormatted} ---*\n`;
+      let totalDay = 0;
+      dayFreights.forEach((f: any) => {
+        const t = transporters.find(trans => trans.id === f.transportId);
+        message += `• ${t?.name || 'Transportadora'}: ${formatCurrency(f.amount / 100)}\n`;
+        totalDay += f.amount;
+      });
+      message += `*Total do dia: ${formatCurrency(totalDay / 100)}*\n\n`;
+      grandTotal += totalDay;
+    });
+    
+    message += `*TOTAL GERAL: ${formatCurrency(grandTotal / 100)}*`;
+    
+    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   const hasAnyDraft = Object.values(drafts).some(val => parseInt(val || "0", 10) > 0);
 
   const handleSaveAll = async () => {
@@ -238,6 +264,16 @@ export default function DashboardPage() {
 
         {sortedDates.length > 0 && (
           <div className="mt-10 mb-8 space-y-8">
+            <div className="flex justify-between items-center px-2 mb-2">
+              <h2 className="text-slate-800 font-bold text-lg tracking-tight">Histórico</h2>
+              <button 
+                onClick={handleShareAll}
+                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full transition-colors flex items-center text-sm font-bold shadow-sm active:scale-95 hover:bg-blue-200"
+              >
+                <Share2 className="w-4 h-4 mr-2" />
+                Compartilhar Tudo
+              </button>
+            </div>
             {sortedDates.map(dateStr => {
               const dayFreights = groupedFreights[dateStr];
               const dateObj = parseISO(dateStr);
