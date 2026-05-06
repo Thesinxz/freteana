@@ -19,7 +19,8 @@ import {
   Truck,
   Sun,
   Zap,
-  Star
+  Star,
+  CheckCircle2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -207,6 +208,17 @@ export default function DashboardPage() {
               <DollarSign className="w-6 h-6" />
             </div>
           </div>
+
+          <div className="mt-4 flex relative z-10">
+            <Link 
+              href="/acertar"
+              className="flex-1 bg-white/80 backdrop-blur-md border border-white rounded-[1rem] py-3 px-4 flex items-center justify-center font-bold text-emerald-600 shadow-sm active:scale-[0.98] transition-all"
+            >
+              <CheckCircle2 className="w-5 h-5 mr-2" />
+              Dar Baixa no Saldo (Receber)
+            </Link>
+          </div>
+
         </div>
       </header>
 
