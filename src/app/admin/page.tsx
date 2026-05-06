@@ -39,7 +39,8 @@ import {
   FileDown,
   Moon,
   Target,
-  Trophy
+  Trophy,
+  Landmark
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Transporter } from "@/types";
@@ -437,6 +438,7 @@ export default function AdminDashboard() {
                           <td className="p-4">
                             <span className={cn("font-bold", darkMode ? "text-slate-200" : "text-slate-700")}>{isFreight ? `Frete: ${transport?.name || '...'}` : isPayment ? 'Pagamento Recebido' : `Despesa: ${item.category}`}</span>
                             {item.note && <p className="text-xs text-slate-500">{item.note}</p>}
+                            {isPayment && item.bank && <p className="text-xs font-semibold text-emerald-600 mt-1 flex items-center"><Landmark className="w-3 h-3 mr-1" /> {item.bank}</p>}
                           </td>
                           <td className={cn("p-4 text-right font-bold", isFreight ? (darkMode ? "text-blue-400" : "text-slate-800") : isPayment ? "text-emerald-500" : "text-red-500")}>
                             {isFreight ? "+" : "-"}{formatCurrency(item.amount / 100)}

@@ -32,6 +32,7 @@ export interface PaymentRecord {
   amount: number;
   createdAt: number;
   note?: string;
+  bank?: string;
   canceled?: boolean;
 }
 

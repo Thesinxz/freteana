@@ -94,12 +94,13 @@ export function useLedger() {
     }
   };
 
-  const addPayment = async (amount: number, note?: string): Promise<boolean> => {
+  const addPayment = async (amount: number, note?: string, bank?: string, dateMs?: number): Promise<boolean> => {
     try {
       await addDoc(collection(db, "pagamentos"), {
         amount,
-        createdAt: Date.now(),
+        createdAt: dateMs || Date.now(),
         note: note || "",
+        bank: bank || "",
         canceled: false
       });
       toast.success("Pagamento registrado!");

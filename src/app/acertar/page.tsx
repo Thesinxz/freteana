@@ -8,6 +8,7 @@ import { useState } from "react";
 import confetti from "canvas-confetti";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
+import { format, parseISO } from "date-fns";
 
 export default function AcertarPage() {
   const { balance, addPayment, loading } = useLedger();
@@ -16,6 +17,8 @@ export default function AcertarPage() {
   
   // They can pay partial or full amount.
   const [paymentAmountStr, setPaymentAmountStr] = useState("");
+  const [selectedBank, setSelectedBank] = useState<string>("Caixa Econômica");
+  const [selectedDateStr, setSelectedDateStr] = useState(format(new Date(), "yyyy-MM-dd"));
 
   if (loading) {
     return (
@@ -53,7 +56,16 @@ export default function AcertarPage() {
     }
 
     setIsSettling(true);
-    const success = await addPayment(paymentNum, "Acerto de conta corrente");
+    
+    let customDateMs = Date.now();
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    if (selectedDateStr && selectedDateStr !== todayStr) {
+      const parsed = parseISO(selectedDateStr);
+      parsed.setHours(12, 0, 0, 0);
+      customDateMs = parsed.getTime();
+    }
+
+    const success = await addPayment(paymentNum, "Acerto de conta corrente", selectedBank, customDateMs);
     
     if (success) {
       // Play a simple beep sound
@@ -147,6 +159,31 @@ export default function AcertarPage() {
                 Valor excede a dívida!
               </p>
             )}
+          </div>
+
+          <div className="mt-6 space-y-4">
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Data do Recebimento</label>
+              <input 
+                type="date"
+                value={selectedDateStr}
+                onChange={(e) => setSelectedDateStr(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all shadow-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-bold text-slate-700 mb-2">Conta de Recebimento</label>
+              <select
+                value={selectedBank}
+                onChange={(e) => setSelectedBank(e.target.value)}
+                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-slate-800 font-medium focus:ring-2 focus:ring-emerald-500 focus:outline-none transition-all shadow-sm appearance-none"
+              >
+                <option value="Caixa Econômica">Caixa Econômica</option>
+                <option value="Nubank">Nubank</option>
+                <option value="Dinheiro">Dinheiro Físico</option>
+                <option value="Outro">Outro Banco</option>
+              </select>
+            </div>
           </div>
         </motion.div>
 
