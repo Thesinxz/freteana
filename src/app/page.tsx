@@ -20,7 +20,9 @@ import {
   Sun,
   Zap,
   Star,
-  CheckCircle2
+  CheckCircle2,
+  Landmark,
+  ArrowDownRight
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -41,7 +43,7 @@ const ICONS: Record<string, React.ElementType> = {
 };
 
 export default function DashboardPage() {
-  const { freights, balance, netProfit, transporters, loading, addFreight } = useLedger();
+  const { freights, payments, balance, netProfit, transporters, loading, addFreight } = useLedger();
   const router = useRouter();
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -73,11 +75,16 @@ export default function DashboardPage() {
   };
 
   const handleShareAll = () => {
-    let message = `*Resumo Geral de Fretes*\n\n`;
+    let message = `*Resumo Geral de Lançamentos*\n\n`;
     let grandTotal = 0;
 
     sortedDates.forEach(dateStr => {
-      const dayFreights = groupedFreights[dateStr];
+      const dayItems = groupedTimeline[dateStr];
+      const dayFreights = dayItems.filter(i => i.type === 'freight');
+      const dayPayments = dayItems.filter(i => i.type === 'payment');
+      
+      if (dayFreights.length === 0 && dayPayments.length === 0) return;
+
       const dateObj = parseISO(dateStr);
       const dateFormatted = format(dateObj, "dd/MM/yyyy");
       
@@ -88,7 +95,13 @@ export default function DashboardPage() {
         message += `• ${t?.name || 'Transportadora'}: ${formatCurrency(f.amount / 100)}\n`;
         totalDay += f.amount;
       });
-      message += `*Total do dia: ${formatCurrency(totalDay / 100)}*\n\n`;
+      
+      dayPayments.forEach((p: any) => {
+        message += `• RECEBIMENTO (${p.bank || 'Outro'}): -${formatCurrency(p.amount / 100)}\n`;
+        totalDay -= p.amount;
+      });
+
+      message += `*Saldo do dia: ${formatCurrency(totalDay / 100)}*\n\n`;
       grandTotal += totalDay;
     });
     
@@ -147,19 +160,32 @@ export default function DashboardPage() {
     );
   }
 
-  const validFreights = freights.filter(f => !f.canceled).sort((a, b) => b.createdAt - a.createdAt);
+  type TimelineItem = {
+    id: string;
+    amount: number;
+    createdAt: number;
+    type: 'freight' | 'payment';
+    transportId?: string;
+    bank?: string;
+    note?: string;
+  };
+
+  const validFreights: TimelineItem[] = freights.filter(f => !f.canceled).map(f => ({ ...f, type: 'freight' }));
+  const validPayments: TimelineItem[] = payments.filter(p => !p.canceled).map(p => ({ ...p, type: 'payment' }));
   
-  const groupedFreights = validFreights.reduce((acc, freight) => {
-    const localDate = new Date(freight.createdAt);
+  const timelineItems = [...validFreights, ...validPayments].sort((a, b) => b.createdAt - a.createdAt);
+
+  const groupedTimeline = timelineItems.reduce((acc, item) => {
+    const localDate = new Date(item.createdAt);
     const dateStr = format(localDate, "yyyy-MM-dd");
     if (!acc[dateStr]) {
       acc[dateStr] = [];
     }
-    acc[dateStr].push(freight);
+    acc[dateStr].push(item);
     return acc;
-  }, {} as Record<string, typeof freights>);
+  }, {} as Record<string, TimelineItem[]>);
   
-  const sortedDates = Object.keys(groupedFreights).sort((a, b) => b.localeCompare(a));
+  const sortedDates = Object.keys(groupedTimeline).sort((a, b) => b.localeCompare(a));
   const hasDebt = balance > 0;
 
   return (
@@ -287,7 +313,7 @@ export default function DashboardPage() {
               </button>
             </div>
             {sortedDates.map(dateStr => {
-              const dayFreights = groupedFreights[dateStr];
+              const dayItems = groupedTimeline[dateStr];
               const dateObj = parseISO(dateStr);
               const isToday = isSameDay(dateObj, new Date());
               
@@ -302,7 +328,7 @@ export default function DashboardPage() {
                       Lançamentos de {isToday ? "Hoje" : format(dateObj, "dd/MM/yyyy", { locale: ptBR })}
                     </h2>
                     <button 
-                      onClick={() => handleShare(dateStr, dayFreights)}
+                      onClick={() => handleShare(dateStr, dayItems.filter(i => i.type === 'freight'))}
                       className="p-2 text-blue-500 hover:bg-blue-50 rounded-full transition-colors flex items-center text-xs font-bold"
                     >
                       <Share2 className="w-4 h-4 mr-1" />
@@ -310,12 +336,42 @@ export default function DashboardPage() {
                     </button>
                   </div>
                   <div className="glass-card overflow-hidden divide-y divide-slate-100/50">
-                    {dayFreights.map(freight => {
-                      const transport = transporters.find(t => t.id === freight.transportId);
+                    {dayItems.map(item => {
+                      if (item.type === 'payment') {
+                        return (
+                          <div key={item.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
+                            <div className="flex items-center space-x-4">
+                              <div className="p-2.5 rounded-2xl text-emerald-600 bg-emerald-100 shadow-sm flex items-center justify-center">
+                                <ArrowDownRight className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-800">Pagamento Recebido</p>
+                                <div className="flex items-center space-x-2">
+                                  <p className="text-xs text-slate-500 font-medium">{format(new Date(item.createdAt), "HH:mm")}</p>
+                                  {item.bank && (
+                                    <>
+                                      <span className="text-slate-300">•</span>
+                                      <p className="text-xs font-semibold text-emerald-600 flex items-center">
+                                        <Landmark className="w-3 h-3 mr-1" />
+                                        {item.bank}
+                                      </p>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                            <span className="font-black text-lg text-emerald-600 tracking-tight">
+                              - {formatCurrency(item.amount / 100)}
+                            </span>
+                          </div>
+                        );
+                      }
+
+                      // Freight item
+                      const transport = transporters.find(t => t.id === item.transportId);
                       const iconKey = transport?.icon || 'Truck';
                       const TransportIcon = ICONS[iconKey] || ICONS[iconKey.charAt(0).toUpperCase() + iconKey.slice(1).toLowerCase()] || Truck;
                       
-                      // Map Tailwind classes to actual hex colors for reliability
                       const COLOR_MAP: Record<string, string> = {
                         'bg-blue-600': '#2563eb',
                         'bg-blue-800': '#1e40af',
@@ -329,7 +385,7 @@ export default function DashboardPage() {
                       const bgColor = transport?.color ? (COLOR_MAP[transport.color] || '#3b82f6') : '#94a3b8';
 
                       return (
-                        <div key={freight.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
+                        <div key={item.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
                           <div className="flex items-center space-x-4">
                             <div 
                               className="p-2.5 rounded-2xl text-white shadow-sm flex items-center justify-center"
@@ -339,11 +395,11 @@ export default function DashboardPage() {
                             </div>
                             <div>
                               <p className="font-bold text-slate-800">{transport?.name || '...'}</p>
-                              <p className="text-xs text-slate-500 font-medium">{format(new Date(freight.createdAt), "HH:mm")}</p>
+                              <p className="text-xs text-slate-500 font-medium">{format(new Date(item.createdAt), "HH:mm")}</p>
                             </div>
                           </div>
                           <span className="font-black text-lg text-slate-800 tracking-tight">
-                            {formatCurrency(freight.amount / 100)}
+                            {formatCurrency(item.amount / 100)}
                           </span>
                         </div>
                       );
