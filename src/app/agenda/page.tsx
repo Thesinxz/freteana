@@ -24,7 +24,8 @@ export default function AgendaPage() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col pt-safe pb-safe">
+    <div className="min-h-screen flex justify-center bg-slate-100/40 relative pt-safe pb-safe">
+      <div className="w-full max-w-md bg-slate-50/70 min-h-screen flex flex-col relative pb-10 shadow-[0_0_50px_rgba(0,0,0,0.02)] border-x border-slate-200/50 backdrop-blur-3xl overflow-x-hidden">
       <header className="p-4 flex justify-between items-center bg-blue-900 text-white pb-6 rounded-b-3xl shadow-lg">
         <div className="flex items-center">
           <button 
@@ -97,6 +98,7 @@ export default function AgendaPage() {
           )}
         </div>
       </main>
+      </div>
     </div>
   );
 }

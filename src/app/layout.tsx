@@ -5,6 +5,7 @@ import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { Toaster } from "sonner";
 import { cn } from "@/lib/utils";
+import { PwaNotificationManager } from "@/components/PwaNotificationManager";
 
 const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
@@ -18,6 +19,9 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "default",
     title: "Frete Ana",
+  },
+  icons: {
+    apple: "/icon-192.png",
   },
 };
 
@@ -42,8 +46,10 @@ export default function RootLayout({
             {children}
           </ProtectedRoute>
         </AuthProvider>
+        <PwaNotificationManager />
         <Toaster position="top-center" richColors />
       </body>
     </html>
   );
 }
+

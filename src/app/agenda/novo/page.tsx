@@ -6,6 +6,8 @@ import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 import { useLedger } from "@/hooks/useLedger";
+import { sendLocalNotification } from "@/lib/pwa-notifications";
+
 
 export default function NovaColetaPage() {
   const router = useRouter();
@@ -32,12 +34,31 @@ export default function NovaColetaPage() {
     setTimeout(() => {
       setLoading(false);
       toast.success("Coleta agendada com sucesso!");
+      
+      // Notify PWA
+      const transport = transporters.find(t => t.id === transportId);
+      const name = transport ? transport.name : "Transportadora";
+      
+      let formattedDate = date;
+      try {
+        const d = new Date(date);
+        formattedDate = d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+      } catch (err) {}
+
+      sendLocalNotification(
+        "Nova Coleta Agendada! 📅",
+        `Coleta com ${name} agendada para ${formattedDate}.${note ? ` Observação: ${note}` : ''}`,
+        "/agenda"
+      );
+
       router.push("/agenda");
     }, 1000);
+
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col pt-safe pb-safe">
+    <div className="min-h-screen flex justify-center bg-slate-100/40 relative pt-safe pb-safe">
+      <div className="w-full max-w-md bg-slate-50/70 min-h-screen flex flex-col relative pb-10 shadow-[0_0_50px_rgba(0,0,0,0.02)] border-x border-slate-200/50 backdrop-blur-3xl overflow-x-hidden">
       <header className="p-4 flex items-center mb-2 bg-white shadow-sm rounded-b-3xl">
         <button 
           onClick={() => router.back()}
@@ -127,6 +148,7 @@ export default function NovaColetaPage() {
           </motion.div>
         </form>
       </main>
+      </div>
     </div>
   );
 }

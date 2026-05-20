@@ -36,7 +36,8 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-6 bg-gradient-to-br from-blue-900 to-blue-700">
+    <div className="min-h-screen flex justify-center bg-slate-100/40 relative">
+      <div className="w-full max-w-md bg-gradient-to-br from-blue-900 to-blue-700 min-h-screen flex flex-col items-center justify-center p-6 relative shadow-[0_0_50px_rgba(0,0,0,0.02)] border-x border-slate-200/50 overflow-x-hidden">
       <motion.div 
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
@@ -85,6 +86,7 @@ export default function LoginPage() {
           </button>
         </form>
       </motion.div>
+      </div>
     </div>
   );
 }

@@ -15,6 +15,8 @@ import {
 import { db } from "@/lib/firebase/config";
 import { FreightRecord, PaymentRecord, Transporter, ExpenseRecord } from "@/types";
 import { toast } from "sonner";
+import { sendLocalNotification } from "@/lib/pwa-notifications";
+import { formatCurrency } from "@/lib/utils";
 
 export function useLedger() {
   const [freights, setFreights] = useState<FreightRecord[]>([]);
@@ -88,6 +90,15 @@ export function useLedger() {
         canceled: false
       });
       toast.success("Frete adicionado com sucesso!");
+      
+      // Notify PWA
+      const transport = transporters.find(t => t.id === transportId);
+      const name = transport ? transport.name : "Transportadora";
+      sendLocalNotification(
+        "Novo Frete Registrado! 🚚",
+        `Lançamento de ${formatCurrency(amount / 100)} registrado para ${name}.`,
+        "/"
+      );
     } catch (error) {
       toast.error("Erro ao adicionar frete.");
       throw error;
@@ -104,6 +115,13 @@ export function useLedger() {
         canceled: false
       });
       toast.success("Pagamento registrado!");
+
+      // Notify PWA
+      sendLocalNotification(
+        "Pagamento Recebido! 💰",
+        `Recebimento de ${formatCurrency(amount / 100)} registrado${bank ? ` via ${bank}` : ''}.`,
+        "/"
+      );
       return true;
     } catch (error) {
       toast.error("Erro ao registrar pagamento.");
@@ -121,10 +139,18 @@ export function useLedger() {
         canceled: false
       });
       toast.success("Despesa registrada!");
+
+      // Notify PWA
+      sendLocalNotification(
+        "Despesa Registrada! 📉",
+        `Despesa de ${formatCurrency(amount / 100)} registrada na categoria "${category}".`,
+        "/"
+      );
     } catch (error) {
       toast.error("Erro ao registrar despesa.");
     }
   };
+
 
   const manageTransporter = async (transporter: Partial<Transporter> & { id?: string }) => {
     try {

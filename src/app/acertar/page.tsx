@@ -114,7 +114,8 @@ export default function AcertarPage() {
   const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
 
   return (
-    <div className="min-h-screen bg-slate-50 flex flex-col pt-safe pb-safe">
+    <div className="min-h-screen flex justify-center bg-slate-100/40 relative pt-safe pb-safe">
+      <div className="w-full max-w-md bg-slate-50/70 min-h-screen flex flex-col relative pb-10 shadow-[0_0_50px_rgba(0,0,0,0.02)] border-x border-slate-200/50 backdrop-blur-3xl overflow-x-hidden">
       <header className="p-6 flex items-center mb-2 relative z-10">
         <button 
           onClick={() => router.back()}
@@ -214,6 +215,7 @@ export default function AcertarPage() {
           </button>
         </div>
       </main>
+      </div>
     </div>
   );
 }

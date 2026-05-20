@@ -111,6 +111,66 @@ export default function DashboardPage() {
     window.open(url, '_blank');
   };
 
+  const handleShareUnpaid = () => {
+    // 1. Gather non-canceled freights and sort oldest first for correct FIFO settlement
+    const activeFreights = [...freights]
+      .filter(f => !f.canceled)
+      .sort((a, b) => a.createdAt - b.createdAt);
+
+    // 2. Gather non-canceled payments
+    const activePayments = payments.filter(p => !p.canceled);
+    let totalPaid = activePayments.reduce((acc, p) => acc + p.amount, 0);
+
+    // 3. Subtract paid freights using FIFO logic
+    const unpaidFreights: { transportName: string; date: number; amount: number }[] = [];
+
+    activeFreights.forEach(freight => {
+      const transport = transporters.find(t => t.id === freight.transportId);
+      const transportName = transport ? transport.name : "Transportadora";
+
+      if (totalPaid >= freight.amount) {
+        totalPaid -= freight.amount;
+      } else if (totalPaid > 0) {
+        const unpaidAmount = freight.amount - totalPaid;
+        totalPaid = 0;
+        unpaidFreights.push({
+          transportName,
+          date: freight.createdAt,
+          amount: unpaidAmount
+        });
+      } else {
+        unpaidFreights.push({
+          transportName,
+          date: freight.createdAt,
+          amount: freight.amount
+        });
+      }
+    });
+
+    if (unpaidFreights.length === 0) {
+      toast.success("Tudo pago! Nenhum lançamento pendente de pagamento.");
+      return;
+    }
+
+    const dateFormatted = format(new Date(), "dd/MM/yyyy");
+    let message = `*Resumo de Lançamentos Pendentes - ${dateFormatted}*\n\n`;
+    let totalPending = 0;
+
+    unpaidFreights.forEach(f => {
+      const dateStr = format(new Date(f.date), "dd/MM/yyyy HH:mm");
+      message += `• *${f.transportName}* (${dateStr}): ${formatCurrency(f.amount / 100)}\n`;
+      totalPending += f.amount;
+    });
+
+    message += `\n*Total Pendente a Receber: ${formatCurrency(totalPending / 100)}*`;
+    message += `\n\n*Chaves para Pagamento PIX:*\n`;
+    message += `• Nubank (CPF): \`000.820.251-69\`\n`;
+    message += `• Caixa (Telefone): \`67 98419-9182\``;
+
+    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
+    window.open(url, '_blank');
+  };
+
   const hasAnyDraft = Object.values(drafts).some(val => parseInt(val || "0", 10) > 0);
 
   const handleSaveAll = async () => {
@@ -187,76 +247,117 @@ export default function DashboardPage() {
   
   const sortedDates = Object.keys(groupedTimeline).sort((a, b) => b.localeCompare(a));
   const hasDebt = balance > 0;
-
   return (
-    <div className="min-h-screen flex flex-col relative pb-32 bg-slate-50 overflow-x-hidden">
-      <header className="pt-safe px-4 pt-6 pb-8 relative z-10">
-        <div className="glass-card p-6 overflow-hidden relative">
-          <div className="absolute -top-20 -right-20 w-40 h-40 bg-blue-400 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob"></div>
-          <div className="absolute -bottom-20 -left-20 w-40 h-40 bg-purple-400 rounded-full mix-blend-multiply filter blur-3xl opacity-50 animate-blob animation-delay-2000"></div>
+    <div className="min-h-screen flex justify-center bg-slate-100/40 relative">
+      {/* Background decorations for desktop viewports */}
+      <div className="hidden lg:block absolute top-10 left-10 max-w-xs text-slate-800 pointer-events-none">
+        <div className="flex items-center space-x-2 mb-2">
+          <div className="p-2 rounded-xl bg-blue-600 text-white font-black text-xs">FA</div>
+          <h2 className="font-extrabold text-lg tracking-tight">Frete Ana</h2>
+        </div>
+        <p className="text-sm text-slate-500 font-medium">Controle e conciliação de fretes de forma mobile, simples e direta.</p>
+      </div>
+      
+      <div className="hidden lg:block absolute bottom-10 right-10 max-w-sm pointer-events-none text-right">
+        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Status do PWA</p>
+        <p className="text-sm text-emerald-600 font-extrabold flex items-center justify-end">
+          <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></span>
+          Conectado & Notificações Ativas
+        </p>
+      </div>
+
+      {/* Centered Device Container */}
+      <div className="w-full max-w-md bg-slate-50/70 min-h-screen flex flex-col relative pb-32 shadow-[0_0_50px_rgba(0,0,0,0.02)] border-x border-slate-200/50 backdrop-blur-3xl overflow-x-hidden">
+      <header className="pt-safe px-4 pt-6 pb-6 relative z-10">
+        <div className="glass-card p-6 overflow-hidden relative border border-white/95 shadow-[0_12px_40px_rgba(0,0,0,0.03)] bg-white/75 backdrop-blur-2xl">
+          {/* Animated Glowing Ambient Blobs in header */}
+          <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob"></div>
+          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob animation-delay-2000"></div>
           
-          <div className="flex justify-between items-start mb-6 relative z-10">
+          <div className="flex justify-between items-center mb-6 relative z-10">
             <div>
-              <p className="text-slate-500 text-sm font-semibold uppercase tracking-wider mb-1 flex items-center">
-                <Sparkles className="w-3 h-3 mr-1 text-blue-500" />
-                Painel da Ana
+              <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1.5 flex items-center">
+                <Sparkles className="w-3.5 h-3.5 mr-1 text-blue-500 animate-pulse" />
+                Painel Administrativo
               </p>
-              <h1 className="text-2xl font-black text-slate-800 capitalize tracking-tight">
+              <h1 className="text-xl font-black text-slate-800 capitalize tracking-tight flex items-center">
                 {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
               </h1>
             </div>
-            <div className="flex space-x-2">
-              <Link href="/admin" className="px-4 py-2 bg-slate-900 text-white rounded-full transition-all shadow-lg active:scale-95">
-                <span className="font-bold text-sm">Admin</span>
-              </Link>
+            
+            <div className="flex items-center space-x-2">
+              <div className="relative group cursor-pointer">
+                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center font-black text-white text-[13px] shadow-[0_4px_15px_rgba(79,70,229,0.3)] border border-white/60 transition-transform duration-300 group-hover:scale-105 active:scale-95">
+                  AN
+                </div>
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full animate-pulse"></span>
+              </div>
             </div>
           </div>
 
-          <div 
-            className="bg-slate-900 rounded-[1.25rem] p-5 flex items-center justify-between shadow-2xl relative z-10 overflow-hidden cursor-pointer"
+          {/* Premium Metallic Card Toggle */}
+          <motion.div 
+            whileHover={{ scale: 1.02 }}
+            whileTap={{ scale: 0.98 }}
+            className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 rounded-[1.5rem] p-5.5 flex items-center justify-between shadow-[0_20px_50px_rgba(30,27,75,0.25)] relative z-10 overflow-hidden cursor-pointer border border-white/10"
             onClick={() => setViewMode(prev => prev === 'balance' ? 'profit' : 'balance')}
           >
-            <div className="absolute inset-0 bg-gradient-to-r from-blue-600/20 to-purple-600/20 mix-blend-overlay"></div>
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500/20 via-transparent to-transparent"></div>
             <div>
-              <p className="text-sm text-slate-300 mb-1 font-medium">
-                {viewMode === 'balance' ? 'Saldo a Receber' : 'Lucro Líquido'}
-              </p>
+              <div className="flex items-center space-x-1.5 mb-1.5">
+                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
+                <p className="text-[10px] text-slate-400 font-extrabold tracking-widest uppercase">
+                  {viewMode === 'balance' ? 'Saldo a Receber' : 'Lucro Líquido'}
+                </p>
+              </div>
               <motion.p 
                 key={viewMode === 'balance' ? balance : netProfit}
-                initial={{ opacity: 0, x: -10 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="font-black text-3xl tracking-tight text-white"
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="font-black text-3xl tracking-tight text-white leading-none font-sans"
               >
                 {formatCurrency((viewMode === 'balance' ? balance : netProfit) / 100)}
               </motion.p>
             </div>
-            <div className={`p-3 rounded-full ${hasDebt ? 'bg-amber-400 text-amber-900 shadow-[0_0_15px_rgba(251,191,36,0.5)]' : 'bg-emerald-400 text-emerald-900 shadow-[0_0_15px_rgba(52,211,153,0.5)]'} transition-all`}>
-              <DollarSign className="w-6 h-6" />
+            <div className={`p-3.5 rounded-2xl ${hasDebt ? 'bg-amber-400/90 text-amber-950 shadow-[0_0_20px_rgba(251,191,36,0.35)]' : 'bg-emerald-400/90 text-emerald-950 shadow-[0_0_20px_rgba(52,211,153,0.35)]'} transition-all duration-300`}>
+              <DollarSign className="w-5.5 h-5.5 stroke-[2.5]" />
             </div>
-          </div>
+          </motion.div>
 
-          <div className="mt-4 flex relative z-10">
+          <div className="mt-5 flex gap-3 relative z-10">
             <Link 
               href="/acertar"
-              className="flex-1 bg-white/80 backdrop-blur-md border border-white rounded-[1rem] py-3 px-4 flex items-center justify-center font-bold text-emerald-600 shadow-sm active:scale-[0.98] transition-all"
+              className="flex-1 h-12 bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200/50 rounded-2xl flex items-center justify-center font-bold text-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.04)] active:scale-[0.97] transition-all text-xs"
             >
-              <CheckCircle2 className="w-5 h-5 mr-2" />
-              Dar Baixa no Saldo (Receber)
+              <CheckCircle2 className="w-4 h-4 mr-2" />
+              Dar Baixa
             </Link>
+            <button 
+              onClick={handleShareUnpaid}
+              className="flex-1 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl flex items-center justify-center font-bold shadow-[0_8px_25px_rgba(37,99,235,0.22)] active:scale-[0.97] transition-all text-xs border border-blue-400/20"
+            >
+              <Share2 className="w-4 h-4 mr-2" />
+              Enviar Pendentes
+            </button>
           </div>
 
         </div>
       </header>
 
+
       <main className="flex-1 px-4 space-y-5 relative z-0">
         <div className="flex justify-between items-center px-2">
-          <h2 className="text-slate-800 font-bold text-lg tracking-tight">Novo Lançamento</h2>
-          <div className="relative">
+          <div>
+            <h2 className="text-slate-800 font-black text-lg tracking-tight">Novo Lançamento</h2>
+            <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest mt-0.5">Lançar na caderneta</p>
+          </div>
+          <div className="relative flex items-center bg-white/70 backdrop-blur-md border border-white/80 rounded-2xl px-3 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
+            <CalendarIcon className="w-3.5 h-3.5 text-blue-500 mr-2" />
             <input 
               type="date" 
               value={selectedDateStr}
               onChange={(e) => setSelectedDateStr(e.target.value)}
-              className="bg-white/60 backdrop-blur-md border border-white/60 text-slate-700 text-sm rounded-full px-4 py-1.5 font-bold shadow-sm focus:ring-2 focus:ring-blue-500 focus:outline-none transition-all"
+              className="bg-transparent text-slate-700 text-xs font-black focus:outline-none transition-all cursor-pointer"
             />
           </div>
         </div>
@@ -413,22 +514,31 @@ export default function DashboardPage() {
       </main>
 
       {/* Bottom Nav Mobile */}
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-100 flex justify-around items-center p-3 z-50 shadow-[0_-4px_20px_rgba(0,0,0,0.05)]">
+      <nav className="flex fixed bottom-0 max-w-md w-full left-1/2 -translate-x-1/2 bg-white/85 backdrop-blur-md border-t border-slate-100/85 flex justify-around items-center p-2.5 z-50 shadow-[0_-4px_30px_rgba(0,0,0,0.03)] pb-safe">
         <button 
           onClick={() => router.push("/")}
-          className="flex flex-col items-center justify-center p-2 rounded-xl text-blue-600 bg-blue-50"
+          className="flex flex-col items-center justify-center py-1.5 px-4 rounded-2xl text-blue-600 bg-blue-50/80 transition-all font-semibold"
         >
-          <Home className="w-6 h-6" />
-          <span className="text-[10px] font-bold mt-1 uppercase">Início</span>
+          <Home className="w-5 h-5" />
+          <span className="text-[9px] font-bold mt-1 uppercase tracking-wider">Início</span>
+        </button>
+        <button 
+          onClick={() => router.push("/agenda")}
+          className="flex flex-col items-center justify-center py-1.5 px-4 rounded-2xl text-slate-400 hover:text-slate-700 transition-all"
+        >
+          <CalendarIcon className="w-5 h-5" />
+          <span className="text-[9px] font-bold mt-1 uppercase tracking-wider">Agenda</span>
         </button>
         <button 
           onClick={() => router.push("/admin")}
-          className="flex flex-col items-center justify-center p-2 rounded-xl text-slate-400"
+          className="flex flex-col items-center justify-center py-1.5 px-4 rounded-2xl text-slate-400 hover:text-slate-700 transition-all"
         >
-          <LayoutDashboard className="w-6 h-6" />
-          <span className="text-[10px] font-bold mt-1 uppercase">Gestão</span>
+          <LayoutDashboard className="w-5 h-5" />
+          <span className="text-[9px] font-bold mt-1 uppercase tracking-wider">Gestão</span>
         </button>
       </nav>
+
+      </div>
     </div>
   );
 }
