@@ -123,14 +123,19 @@ export function useLedger() {
         createdAt: customDateMs || Date.now(),
         canceled: false
       });
-      toast.success("Frete adicionado com sucesso!");
-      
-      // Notify PWA
+
       const transport = transporters.find(t => t.id === transportId);
       const name = transport ? transport.name : "Transportadora";
+      const message = `Lançamento de ${formatCurrency(amount / 100)} registrado para ${name}.`;
+      
+      toast.success("Novo Frete Registrado! 🚚", {
+        description: message,
+      });
+      
+      // Notify PWA (system / background)
       sendLocalNotification(
         "Novo Frete Registrado! 🚚",
-        `Lançamento de ${formatCurrency(amount / 100)} registrado para ${name}.`,
+        message,
         "/"
       );
     } catch (error) {
@@ -148,12 +153,17 @@ export function useLedger() {
         bank: bank || "",
         canceled: false
       });
-      toast.success("Pagamento registrado!");
 
-      // Notify PWA
+      const message = `Recebimento de ${formatCurrency(amount / 100)} registrado${bank ? ` via ${bank}` : ''}.`;
+
+      toast.success("Pagamento Recebido! 💰", {
+        description: message,
+      });
+
+      // Notify PWA (system / background)
       sendLocalNotification(
         "Pagamento Recebido! 💰",
-        `Recebimento de ${formatCurrency(amount / 100)} registrado${bank ? ` via ${bank}` : ''}.`,
+        message,
         "/"
       );
       return true;
@@ -172,12 +182,17 @@ export function useLedger() {
         createdAt: Date.now(),
         canceled: false
       });
-      toast.success("Despesa registrada!");
 
-      // Notify PWA
+      const message = `Despesa de ${formatCurrency(amount / 100)} registrada na categoria "${category}".`;
+
+      toast.success("Despesa Registrada! 📉", {
+        description: message,
+      });
+
+      // Notify PWA (system / background)
       sendLocalNotification(
         "Despesa Registrada! 📉",
-        `Despesa de ${formatCurrency(amount / 100)} registrada na categoria "${category}".`,
+        message,
         "/"
       );
     } catch (error) {
