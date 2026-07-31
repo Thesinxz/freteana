@@ -56,7 +56,7 @@ export async function requestNotificationPermission() {
         const registration = await navigator.serviceWorker.ready;
         
         // FCM Push Token subscription using VAPID key
-        const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+        const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || "BOzu_h_uvtMQoYZIplMPwGn-3-bAWOBK_yFXBViCo-FiIFZtHjXLG7MQ2tzMq7kSXHcLupifK8h4_J-Y_h23agI";
         if (vapidKey && (await isMessagingSupported())) {
           try {
             const messaging = getMessaging(app);
