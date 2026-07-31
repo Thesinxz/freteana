@@ -1,38 +1,48 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, X, Sparkles, CheckCircle2 } from "lucide-react";
+import { Bell, X, Sparkles, Share, PlusSquare, Smartphone } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   registerServiceWorker, 
   getNotificationPermissionState, 
   requestNotificationPermission,
-  isNotificationSupported 
+  isNotificationSupported,
+  isIOS,
+  isStandalone
 } from "@/lib/pwa-notifications";
 
 export function PwaNotificationManager() {
   const [showPrompt, setShowPrompt] = useState(false);
+  const [showIOSInstallGuide, setShowIOSInstallGuide] = useState(false);
   const [permissionState, setPermissionState] = useState<string>("default");
-  const [supported, setSupported] = useState(false);
 
   useEffect(() => {
-    // 1. Register the Service Worker
+    // 1. Register Service Worker
     registerServiceWorker();
 
     // 2. Check notification compatibility & status
     const initNotifications = async () => {
-      const isSupported = isNotificationSupported();
-      setSupported(isSupported);
+      const iosDevice = isIOS();
+      const standaloneMode = isStandalone();
+      const dismissedNotif = localStorage.getItem("pwa-notif-prompt-dismissed");
+      const dismissedIOS = localStorage.getItem("pwa-ios-guide-dismissed");
 
-      if (isSupported) {
+      // On iOS in Safari (not saved to Home Screen yet)
+      if (iosDevice && !standaloneMode && dismissedIOS !== "true") {
+        const timer = setTimeout(() => {
+          setShowIOSInstallGuide(true);
+        }, 1500);
+        return () => clearTimeout(timer);
+      }
+
+      // If standalone or desktop/android
+      const supported = isNotificationSupported();
+      if (supported) {
         const state = await getNotificationPermissionState();
         setPermissionState(state);
 
-        // Check if user dismissed the prompt in this session/localStorage
-        const dismissed = localStorage.getItem("pwa-notif-prompt-dismissed");
-        
-        if (state === "default" && dismissed !== "true") {
-          // Delay showing the prompt slightly for a better user experience
+        if (state === "default" && dismissedNotif !== "true") {
           const timer = setTimeout(() => {
             setShowPrompt(true);
           }, 2000);
@@ -50,70 +60,139 @@ export function PwaNotificationManager() {
     setShowPrompt(false);
   };
 
-  const handleDismiss = () => {
+  const handleDismissPrompt = () => {
     localStorage.setItem("pwa-notif-prompt-dismissed", "true");
     setShowPrompt(false);
   };
 
-  if (!supported || !showPrompt) return null;
+  const handleDismissIOSGuide = () => {
+    localStorage.setItem("pwa-ios-guide-dismissed", "true");
+    setShowIOSInstallGuide(false);
+  };
 
   return (
     <AnimatePresence>
-      <motion.div
-        initial={{ opacity: 0, y: 50, scale: 0.95 }}
-        animate={{ opacity: 1, y: 0, scale: 1 }}
-        exit={{ opacity: 0, y: 50, scale: 0.95 }}
-        transition={{ type: "spring", stiffness: 300, damping: 25 }}
-        className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50"
-      >
-        <div className="glass-card p-5 overflow-hidden relative border border-blue-500/20 bg-slate-900/95 backdrop-blur-lg shadow-[0_10px_30px_rgba(30,64,175,0.25)] text-white rounded-2xl">
-          {/* Decorative blurred backgrounds */}
-          <div className="absolute -top-10 -right-10 w-24 h-24 bg-blue-600 rounded-full mix-blend-multiply filter blur-2xl opacity-40"></div>
-          <div className="absolute -bottom-10 -left-10 w-24 h-24 bg-purple-600 rounded-full mix-blend-multiply filter blur-2xl opacity-40"></div>
+      {/* 1. iOS Safari Banner: Guide to Add to Home Screen */}
+      {showIOSInstallGuide && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 50, scale: 0.95 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50"
+        >
+          <div className="p-5 overflow-hidden relative border border-slate-700/80 bg-slate-900 text-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
+            {/* Ambient glows */}
+            <div className="absolute -top-10 -right-10 w-28 h-28 bg-blue-600 rounded-full mix-blend-screen filter blur-3xl opacity-30 pointer-events-none"></div>
 
-          <div className="flex justify-between items-start relative z-10">
-            <div className="flex items-center space-x-3">
-              <div className="p-2.5 rounded-xl bg-blue-500/20 border border-blue-400/30 text-blue-400 flex items-center justify-center animate-pulse">
-                <Bell className="w-5 h-5" />
+            <div className="flex justify-between items-start relative z-10">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-2xl bg-blue-600 text-white shadow-md flex items-center justify-center">
+                  <Smartphone className="w-5 h-5 animate-bounce" />
+                </div>
+                <div>
+                  <p className="text-[11px] text-blue-400 font-extrabold uppercase tracking-wider mb-0.5 flex items-center">
+                    <Sparkles className="w-3.5 h-3.5 mr-1" />
+                    Notificações no iPhone
+                  </p>
+                  <h3 className="text-base font-black tracking-tight text-white">
+                    Instalar PWA no iOS
+                  </h3>
+                </div>
               </div>
-              <div>
-                <p className="text-xs text-blue-400 font-semibold uppercase tracking-wider mb-0.5 flex items-center">
-                  <Sparkles className="w-3 h-3 mr-1" />
-                  Notificações PWA
-                </p>
-                <h3 className="text-base font-bold tracking-tight text-white">
-                  Ativar Alertas no iOS?
-                </h3>
+              <button 
+                onClick={handleDismissIOSGuide}
+                className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 mt-3 font-medium leading-relaxed relative z-10">
+              Para receber alertas no iOS, siga estes 3 passos simples no Safari:
+            </p>
+
+            <div className="mt-3 space-y-2.5 text-xs relative z-10 bg-slate-800/90 border border-slate-700/80 p-3.5 rounded-2xl shadow-inner">
+              <div className="flex items-center space-x-2.5">
+                <span className="font-black text-white bg-blue-600 px-2 py-0.5 rounded-md text-xs shadow-sm">1</span>
+                <span className="text-slate-200">Toque em <strong className="text-white font-extrabold">Compartilhar <Share className="w-3.5 h-3.5 inline mx-0.5 text-blue-400" /></strong> no Safari.</span>
+              </div>
+              <div className="flex items-center space-x-2.5">
+                <span className="font-black text-white bg-blue-600 px-2 py-0.5 rounded-md text-xs shadow-sm">2</span>
+                <span className="text-slate-200">Selecione <strong className="text-white font-extrabold">Adicionar à Tela de Início <PlusSquare className="w-3.5 h-3.5 inline mx-0.5 text-blue-400" /></strong>.</span>
+              </div>
+              <div className="flex items-center space-x-2.5">
+                <span className="font-black text-white bg-blue-600 px-2 py-0.5 rounded-md text-xs shadow-sm">3</span>
+                <span className="text-slate-200">Abra pelo ícone da tela inicial para receber alertas!</span>
               </div>
             </div>
-            <button 
-              onClick={handleDismiss}
-              className="p-1 hover:bg-white/10 rounded-full text-slate-400 hover:text-white transition-colors"
+
+            <button
+              onClick={handleDismissIOSGuide}
+              className="mt-3.5 w-full h-11 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl font-black text-xs transition-all shadow-lg border border-blue-400/20"
             >
-              <X className="w-4 h-4" />
+              Entendido
             </button>
           </div>
+        </motion.div>
+      )}
 
-          <p className="text-xs text-slate-300 mt-2.5 leading-relaxed relative z-10">
-            Receba notificações na tela inicial sempre que um frete for salvo ou pagamento for registrado na caderneta!
-          </p>
+      {/* 2. Standalone / Standard Notification Permission Banner */}
+      {!showIOSInstallGuide && showPrompt && permissionState === "default" && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 50, scale: 0.95 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50"
+        >
+          <div className="p-5 overflow-hidden relative border border-slate-700/80 bg-slate-900 text-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
+            <div className="absolute -top-10 -right-10 w-28 h-28 bg-blue-600 rounded-full mix-blend-screen filter blur-3xl opacity-30 pointer-events-none"></div>
 
-          <div className="mt-4 flex space-x-2 relative z-10">
-            <button
-              onClick={handleEnableNotifications}
-              className="flex-1 h-10 bg-gradient-to-r from-blue-500 to-indigo-600 hover:from-blue-600 hover:to-indigo-700 active:scale-[0.98] text-white rounded-xl font-bold text-xs shadow-md flex items-center justify-center transition-all border border-blue-400/20"
-            >
-              Ativar Notificações 🔔
-            </button>
-            <button
-              onClick={handleDismiss}
-              className="px-4 h-10 bg-white/10 hover:bg-white/15 text-slate-300 hover:text-white rounded-xl font-semibold text-xs transition-all"
-            >
-              Depois
-            </button>
+            <div className="flex justify-between items-start relative z-10">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-2xl bg-blue-600 text-white shadow-md flex items-center justify-center animate-pulse">
+                  <Bell className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] text-blue-400 font-extrabold uppercase tracking-wider mb-0.5 flex items-center">
+                    <Sparkles className="w-3.5 h-3.5 mr-1" />
+                    Notificações PWA
+                  </p>
+                  <h3 className="text-base font-black tracking-tight text-white">
+                    Ativar Alertas de Frete?
+                  </h3>
+                </div>
+              </div>
+              <button 
+                onClick={handleDismissPrompt}
+                className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 mt-3 font-medium leading-relaxed relative z-10">
+              Receba avisos em tempo real sempre que um frete for salvo ou pagamento for registrado na caderneta!
+            </p>
+
+            <div className="mt-4 flex space-x-2.5 relative z-10">
+              <button
+                onClick={handleEnableNotifications}
+                className="flex-1 h-11 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl font-black text-xs shadow-lg flex items-center justify-center transition-all border border-blue-400/20"
+              >
+                Ativar Notificações 🔔
+              </button>
+              <button
+                onClick={handleDismissPrompt}
+                className="px-4 h-11 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-2xl font-bold text-xs transition-all border border-slate-700"
+              >
+                Depois
+              </button>
+            </div>
           </div>
-        </div>
-      </motion.div>
+        </motion.div>
+      )}
     </AnimatePresence>
   );
 }

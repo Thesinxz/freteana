@@ -29,37 +29,71 @@ export function useLedger() {
   useEffect(() => {
     // Listen to Transporters
     const transportersQuery = query(collection(db, "transportadoras"), orderBy("name", "asc"));
-    const unsubTransporters = onSnapshot(transportersQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transporter));
-      setTransporters(data);
-      setLoadedFlags(prev => ({ ...prev, transporters: true }));
-    });
+    const unsubTransporters = onSnapshot(
+      transportersQuery, 
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Transporter));
+        setTransporters(data);
+        setLoadedFlags(prev => ({ ...prev, transporters: true }));
+      },
+      (err) => {
+        console.error("Firebase transporters error:", err);
+        setLoadedFlags(prev => ({ ...prev, transporters: true }));
+      }
+    );
 
     // Listen to Freights
     const freightsQuery = query(collection(db, "fretes"), orderBy("createdAt", "desc"));
-    const unsubFreights = onSnapshot(freightsQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FreightRecord));
-      setFreights(data);
-      setLoadedFlags(prev => ({ ...prev, freights: true }));
-    });
+    const unsubFreights = onSnapshot(
+      freightsQuery, 
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FreightRecord));
+        setFreights(data);
+        setLoadedFlags(prev => ({ ...prev, freights: true }));
+      },
+      (err) => {
+        console.error("Firebase freights error:", err);
+        setLoadedFlags(prev => ({ ...prev, freights: true }));
+      }
+    );
 
     // Listen to Payments
     const paymentsQuery = query(collection(db, "pagamentos"), orderBy("createdAt", "desc"));
-    const unsubPayments = onSnapshot(paymentsQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentRecord));
-      setPayments(data);
-      setLoadedFlags(prev => ({ ...prev, payments: true }));
-    });
+    const unsubPayments = onSnapshot(
+      paymentsQuery, 
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as PaymentRecord));
+        setPayments(data);
+        setLoadedFlags(prev => ({ ...prev, payments: true }));
+      },
+      (err) => {
+        console.error("Firebase payments error:", err);
+        setLoadedFlags(prev => ({ ...prev, payments: true }));
+      }
+    );
 
     // Listen to Expenses
     const expensesQuery = query(collection(db, "despesas"), orderBy("createdAt", "desc"));
-    const unsubExpenses = onSnapshot(expensesQuery, (snapshot) => {
-      const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExpenseRecord));
-      setExpenses(data);
-      setLoadedFlags(prev => ({ ...prev, expenses: true }));
-    });
+    const unsubExpenses = onSnapshot(
+      expensesQuery, 
+      (snapshot) => {
+        const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ExpenseRecord));
+        setExpenses(data);
+        setLoadedFlags(prev => ({ ...prev, expenses: true }));
+      },
+      (err) => {
+        console.error("Firebase expenses error:", err);
+        setLoadedFlags(prev => ({ ...prev, expenses: true }));
+      }
+    );
+
+    // Fallback timeout so page never gets stuck on spinner indefinitely
+    const timer = setTimeout(() => {
+      setLoading(false);
+    }, 3000);
 
     return () => {
+      clearTimeout(timer);
       unsubTransporters();
       unsubFreights();
       unsubPayments();

@@ -1,9 +1,26 @@
-// PWA Notification helper for iOS 16.4+ / iOS 17+ and modern platforms
+// PWA Notification helper for iOS 16.4+, iOS 17+, iOS 18+ and modern platforms
+
+export function isIOS(): boolean {
+  if (typeof window === 'undefined') return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
+    (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+export function isStandalone(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.matchMedia('(display-mode: standalone)').matches || 
+    (navigator as any).standalone === true;
+}
+
+export function isSecureOrigin(): boolean {
+  if (typeof window === 'undefined') return false;
+  return window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+}
 
 export async function registerServiceWorker() {
   if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
     try {
-      const registration = await navigator.serviceWorker.register('/sw.js');
+      const registration = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
       console.log('Service Worker registered successfully with scope:', registration.scope);
       return registration;
     } catch (error) {
@@ -14,7 +31,8 @@ export async function registerServiceWorker() {
 }
 
 export function isNotificationSupported() {
-  return typeof window !== 'undefined' && 'Notification' in window && 'serviceWorker' in navigator;
+  if (typeof window === 'undefined') return false;
+  return 'Notification' in window && 'serviceWorker' in navigator;
 }
 
 export async function getNotificationPermissionState() {
@@ -28,17 +46,22 @@ export async function requestNotificationPermission() {
   }
 
   try {
+    // Must be called synchronously from a user gesture event
     const permission = await Notification.requestPermission();
     if (permission === 'granted') {
-      const registration = await navigator.serviceWorker.ready;
-      if (registration) {
-        registration.showNotification('Notificações Ativas! 🔔', {
-          body: 'Você receberá avisos quando novas anotações forem criadas na sua caderneta.',
-          icon: '/icon-192.png',
-          badge: '/icon-192.png',
-          vibrate: [100, 50, 100],
-          data: { url: '/' }
-        } as any);
+      try {
+        const registration = await navigator.serviceWorker.ready;
+        if (registration && registration.showNotification) {
+          await registration.showNotification('Notificações Ativas! 🔔', {
+            body: 'Você receberá avisos quando novas anotações forem criadas na sua caderneta.',
+            icon: '/icon-192.png',
+            badge: '/icon-192.png',
+            vibrate: [100, 50, 100],
+            data: { url: '/' }
+          } as any);
+        }
+      } catch (err) {
+        console.warn('Failed to trigger test notification on permission grant:', err);
       }
     }
     return permission;
@@ -56,8 +79,8 @@ export async function sendLocalNotification(title: string, body: string, url: st
   if (Notification.permission === 'granted') {
     try {
       const registration = await navigator.serviceWorker.ready;
-      if (registration) {
-        registration.showNotification(title, {
+      if (registration && registration.showNotification) {
+        await registration.showNotification(title, {
           body,
           icon: '/icon-192.png',
           badge: '/icon-192.png',
@@ -70,13 +93,15 @@ export async function sendLocalNotification(title: string, body: string, url: st
       }
     } catch (error) {
       console.error('Failed to send notification via Service Worker:', error);
-      // Fallback to standard browser Notification API
+      // Fallback to standard browser Notification API if allowed
       try {
-        new Notification(title, {
-          body,
-          icon: '/icon-192.png',
-        });
-        return true;
+        if (typeof Notification !== 'undefined') {
+          new Notification(title, {
+            body,
+            icon: '/icon-192.png',
+          });
+          return true;
+        }
       } catch (e) {
         console.error('Fallback notification failed too:', e);
       }

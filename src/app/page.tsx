@@ -3,6 +3,7 @@
 import { useLedger } from "@/hooks/useLedger";
 import { TransportCard } from "@/components/TransportCard";
 import { PixCards } from "@/components/PixCards";
+import { SwipeableItem } from "@/components/SwipeableItem";
 import { formatCurrency, cn } from "@/lib/utils";
 import { format, isSameDay, parseISO } from "date-fns";
 import { ptBR } from "date-fns/locale";
@@ -22,7 +23,8 @@ import {
   Star,
   CheckCircle2,
   Landmark,
-  ArrowDownRight
+  ArrowDownRight,
+  Trash2
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
@@ -43,7 +45,7 @@ const ICONS: Record<string, React.ElementType> = {
 };
 
 export default function DashboardPage() {
-  const { freights, payments, balance, netProfit, transporters, loading, addFreight } = useLedger();
+  const { freights, payments, balance, netProfit, transporters, loading, addFreight, cancelRecord } = useLedger();
   const router = useRouter();
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
@@ -440,31 +442,50 @@ export default function DashboardPage() {
                     {dayItems.map(item => {
                       if (item.type === 'payment') {
                         return (
-                          <div key={item.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
-                            <div className="flex items-center space-x-4">
-                              <div className="p-2.5 rounded-2xl text-emerald-600 bg-emerald-100 shadow-sm flex items-center justify-center">
-                                <ArrowDownRight className="w-4 h-4" />
-                              </div>
-                              <div>
-                                <p className="font-bold text-slate-800">Pagamento Recebido</p>
-                                <div className="flex items-center space-x-2">
-                                  <p className="text-xs text-slate-500 font-medium">{format(new Date(item.createdAt), "HH:mm")}</p>
-                                  {item.bank && (
-                                    <>
-                                      <span className="text-slate-300">•</span>
-                                      <p className="text-xs font-semibold text-emerald-600 flex items-center">
-                                        <Landmark className="w-3 h-3 mr-1" />
-                                        {item.bank}
-                                      </p>
-                                    </>
-                                  )}
+                          <SwipeableItem
+                            key={item.id}
+                            onDelete={() => cancelRecord('payment', item.id)}
+                            confirmTitle={`Deseja cancelar o pagamento de ${formatCurrency(item.amount / 100)}?`}
+                          >
+                            <div className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
+                              <div className="flex items-center space-x-4">
+                                <div className="p-2.5 rounded-2xl text-emerald-600 bg-emerald-100 shadow-sm flex items-center justify-center">
+                                  <ArrowDownRight className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <p className="font-bold text-slate-800">Pagamento Recebido</p>
+                                  <div className="flex items-center space-x-2">
+                                    <p className="text-xs text-slate-500 font-medium">{format(new Date(item.createdAt), "HH:mm")}</p>
+                                    {item.bank && (
+                                      <>
+                                        <span className="text-slate-300">•</span>
+                                        <p className="text-xs font-semibold text-emerald-600 flex items-center">
+                                          <Landmark className="w-3 h-3 mr-1" />
+                                          {item.bank}
+                                        </p>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                               </div>
+                              <div className="flex items-center space-x-3">
+                                <span className="font-black text-lg text-emerald-600 tracking-tight">
+                                  - {formatCurrency(item.amount / 100)}
+                                </span>
+                                <button 
+                                  onClick={() => {
+                                    if (confirm(`Deseja cancelar o pagamento de ${formatCurrency(item.amount / 100)}?`)) {
+                                      cancelRecord('payment', item.id);
+                                    }
+                                  }}
+                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors active:scale-95"
+                                  title="Cancelar Lançamento"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             </div>
-                            <span className="font-black text-lg text-emerald-600 tracking-tight">
-                              - {formatCurrency(item.amount / 100)}
-                            </span>
-                          </div>
+                          </SwipeableItem>
                         );
                       }
 
@@ -486,23 +507,42 @@ export default function DashboardPage() {
                       const bgColor = transport?.color ? (COLOR_MAP[transport.color] || '#3b82f6') : '#94a3b8';
 
                       return (
-                        <div key={item.id} className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
-                          <div className="flex items-center space-x-4">
-                            <div 
-                              className="p-2.5 rounded-2xl text-white shadow-sm flex items-center justify-center"
-                              style={{ backgroundColor: bgColor }}
-                            >
-                              <TransportIcon className="w-4 h-4" />
+                        <SwipeableItem
+                          key={item.id}
+                          onDelete={() => cancelRecord('freight', item.id)}
+                          confirmTitle={`Deseja cancelar o frete de ${formatCurrency(item.amount / 100)} (${transport?.name || 'Transportadora'})?`}
+                        >
+                          <div className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
+                            <div className="flex items-center space-x-4">
+                              <div 
+                                className="p-2.5 rounded-2xl text-white shadow-sm flex items-center justify-center"
+                                style={{ backgroundColor: bgColor }}
+                              >
+                                <TransportIcon className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="font-bold text-slate-800">{transport?.name || '...'}</p>
+                                <p className="text-xs text-slate-500 font-medium">{format(new Date(item.createdAt), "HH:mm")}</p>
+                              </div>
                             </div>
-                            <div>
-                              <p className="font-bold text-slate-800">{transport?.name || '...'}</p>
-                              <p className="text-xs text-slate-500 font-medium">{format(new Date(item.createdAt), "HH:mm")}</p>
+                            <div className="flex items-center space-x-3">
+                              <span className="font-black text-lg text-slate-800 tracking-tight">
+                                {formatCurrency(item.amount / 100)}
+                              </span>
+                              <button 
+                                onClick={() => {
+                                  if (confirm(`Deseja cancelar o frete de ${formatCurrency(item.amount / 100)} (${transport?.name || 'Transportadora'})?`)) {
+                                    cancelRecord('freight', item.id);
+                                  }
+                                }}
+                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors active:scale-95"
+                                title="Cancelar Lançamento"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
                             </div>
                           </div>
-                          <span className="font-black text-lg text-slate-800 tracking-tight">
-                            {formatCurrency(item.amount / 100)}
-                          </span>
-                        </div>
+                        </SwipeableItem>
                       );
                     })}
                   </div>

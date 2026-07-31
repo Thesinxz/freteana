@@ -1,5 +1,5 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
-import { getAuth } from 'firebase/auth';
+import { getAuth, Auth } from 'firebase/auth';
 import { 
   getFirestore, 
   initializeFirestore, 
@@ -9,29 +9,39 @@ import {
 } from 'firebase/firestore';
 
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID,
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyBZKgOjATklotjcWzerD5tqPvODNkqJByw",
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "fretebela.firebaseapp.com",
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "fretebela",
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "fretebela.firebasestorage.app",
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "318460639332",
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "1:318460639332:web:8cce5374ce025eee290771",
 };
 
 let app: FirebaseApp;
 let db: Firestore;
+let auth: Auth;
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
 
-  // Enable offline persistence with the modern API
-  db = initializeFirestore(app, {
-    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-  });
+  // Enable offline persistence with modern API
+  try {
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
+  } catch {
+    db = getFirestore(app);
+  }
 } else {
   app = getApp();
   db = getFirestore(app);
 }
 
-const auth = getAuth(app);
+try {
+  auth = getAuth(app);
+} catch (error) {
+  console.warn("Firebase auth not initialized due to missing/invalid API key:", error);
+  auth = {} as Auth;
+}
 
 export { app, auth, db };
