@@ -7,6 +7,7 @@ import {
   persistentMultipleTabManager,
   Firestore
 } from 'firebase/firestore';
+import { getMessaging, Messaging, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyBZKgOjATklotjcWzerD5tqPvODNkqJByw",
@@ -20,6 +21,7 @@ const firebaseConfig = {
 let app: FirebaseApp;
 let db: Firestore;
 let auth: Auth;
+let messaging: Messaging | null = null;
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
@@ -44,4 +46,16 @@ try {
   auth = {} as Auth;
 }
 
-export { app, auth, db };
+if (typeof window !== 'undefined') {
+  isSupported().then((supported) => {
+    if (supported) {
+      try {
+        messaging = getMessaging(app);
+      } catch (e) {
+        console.warn("FCM messaging init error:", e);
+      }
+    }
+  });
+}
+
+export { app, auth, db, messaging };

@@ -1,5 +1,8 @@
 // PWA Notification helper for iOS 16.4+, iOS 17+, iOS 18+ and modern platforms
 
+import { getMessaging, getToken, isSupported as isMessagingSupported } from 'firebase/messaging';
+import { app } from '@/lib/firebase/config';
+
 export function isIOS(): boolean {
   if (typeof window === 'undefined') return false;
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || 
@@ -51,6 +54,25 @@ export async function requestNotificationPermission() {
     if (permission === 'granted') {
       try {
         const registration = await navigator.serviceWorker.ready;
+        
+        // FCM Push Token subscription using VAPID key
+        const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY;
+        if (vapidKey && (await isMessagingSupported())) {
+          try {
+            const messaging = getMessaging(app);
+            const token = await getToken(messaging, {
+              vapidKey,
+              serviceWorkerRegistration: registration
+            });
+            if (token) {
+              console.log('FCM Web Push Device Token:', token);
+              localStorage.setItem('fcm-push-token', token);
+            }
+          } catch (fcmErr) {
+            console.warn('FCM VAPID token registration warning:', fcmErr);
+          }
+        }
+
         if (registration && registration.showNotification) {
           await registration.showNotification('Notificações Ativas! 🔔', {
             body: 'Você receberá avisos quando novas anotações forem criadas na sua caderneta.',
