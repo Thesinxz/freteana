@@ -1,7 +1,8 @@
 // PWA Notification helper for iOS 16.4+, iOS 17+, iOS 18+ and modern platforms
 
 import { getMessaging, getToken, isSupported as isMessagingSupported } from 'firebase/messaging';
-import { app } from '@/lib/firebase/config';
+import { doc, setDoc } from 'firebase/firestore';
+import { app, db } from '@/lib/firebase/config';
 
 export function isIOS(): boolean {
   if (typeof window === 'undefined') return false;
@@ -67,6 +68,16 @@ export async function requestNotificationPermission() {
             if (token) {
               console.log('FCM Web Push Device Token:', token);
               localStorage.setItem('fcm-push-token', token);
+              try {
+                await setDoc(doc(db, 'fcm_tokens', token), {
+                  token,
+                  updatedAt: Date.now(),
+                  platform: isIOS() ? 'iOS' : 'Web/Android',
+                  userAgent: typeof navigator !== 'undefined' ? navigator.userAgent : ''
+                }, { merge: true });
+              } catch (dbErr) {
+                console.warn('Failed to save FCM token to Firestore:', dbErr);
+              }
             }
           } catch (fcmErr) {
             console.warn('FCM VAPID token registration warning:', fcmErr);
