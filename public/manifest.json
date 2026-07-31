@@ -1,11 +1,13 @@
 {
-  "name": "Frete Ana",
-  "short_name": "FreteAna",
+  "name": "Frete Ana - Controle de Caderneta",
+  "short_name": "Frete Ana",
+  "description": "Controle financeiro de fretes e conciliação simples e direta.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#1E40AF",
-  "theme_color": "#1E40AF",
+  "background_color": "#F8FAFC",
+  "theme_color": "#2563EB",
   "orientation": "portrait",
+  "categories": ["finance", "business"],
   "icons": [
     {
       "src": "/icon-192.png",

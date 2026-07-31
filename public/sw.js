@@ -1,6 +1,5 @@
 // Service Worker for Frete Ana PWA
 const CACHE_NAME = 'freteana-cache-v1';
-
 const STATIC_ASSETS = [
   '/',
   '/icon-192.png',
@@ -10,7 +9,9 @@ const STATIC_ASSETS = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+    caches.open(CACHE_NAME).then((cache) => {
+      return cache.addAll(STATIC_ASSETS);
+    })
   );
   self.skipWaiting();
 });
@@ -20,6 +21,8 @@ self.addEventListener('activate', (event) => {
 });
 
 // Handle push notification events
+// NOTA: Evento 'push' NÃO funciona em iOS Safari/PWA.
+// Funciona apenas em Android Chrome e Desktop Chrome.
 self.addEventListener('push', (event) => {
   let data = {};
   if (event.data) {
@@ -39,7 +42,6 @@ self.addEventListener('push', (event) => {
     data: {
       url: data.url || '/'
     },
-    // Required properties for premium feel and compatibility
     tag: data.tag || 'freteana-notification',
     renotify: true
   };
@@ -55,14 +57,12 @@ self.addEventListener('notificationclick', (event) => {
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      // Check if there is already a window open with this URL and focus it
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if (client.url === urlToOpen && 'focus' in client) {
           return client.focus();
         }
       }
-      // Otherwise, open a new window
       if (self.clients.openWindow) {
         return self.clients.openWindow(urlToOpen);
       }

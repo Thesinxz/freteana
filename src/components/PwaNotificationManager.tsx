@@ -1,20 +1,28 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, X, Sparkles, Share, PlusSquare, Smartphone } from "lucide-react";
+import { Bell, X, Sparkles, Share, PlusSquare, Smartphone, AlertTriangle } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { 
   registerServiceWorker, 
-  getNotificationPermissionState, 
   requestNotificationPermission,
-  isNotificationSupported,
+  canUseNotifications,
   isIOS,
-  isStandalone
+  isStandalone,
+  isIOSSafari,
+  getNotificationPermissionState
 } from "@/lib/pwa-notifications";
+
+function getIOSVersion(): number {
+  const match = /CPU.*OS ([0-9_]{1,5})/i.exec(navigator.userAgent);
+  if (!match) return 0;
+  return parseFloat(match[1].replace(/_/g, '.'));
+}
 
 export function PwaNotificationManager() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [showIOSInstallGuide, setShowIOSInstallGuide] = useState(false);
+  const [showIOSIncompatible, setShowIOSIncompatible] = useState(false);
   const [permissionState, setPermissionState] = useState<string>("default");
 
   useEffect(() => {
@@ -27,6 +35,7 @@ export function PwaNotificationManager() {
       const standaloneMode = isStandalone();
       const dismissedNotif = localStorage.getItem("pwa-notif-prompt-dismissed");
       const dismissedIOS = localStorage.getItem("pwa-ios-guide-dismissed");
+      const dismissedIncompatible = localStorage.getItem("pwa-ios-incompatible-dismissed");
 
       // On iOS in Safari (not saved to Home Screen yet)
       if (iosDevice && !standaloneMode && dismissedIOS !== "true") {
@@ -36,8 +45,19 @@ export function PwaNotificationManager() {
         return () => clearTimeout(timer);
       }
 
+      // iOS installed but old version (< 16.4)
+      if (iosDevice && standaloneMode) {
+        const version = getIOSVersion();
+        if (version > 0 && version < 16.4 && dismissedIncompatible !== "true") {
+          const timer = setTimeout(() => {
+            setShowIOSIncompatible(true);
+          }, 1500);
+          return () => clearTimeout(timer);
+        }
+      }
+
       // If standalone or desktop/android
-      const supported = isNotificationSupported();
+      const supported = canUseNotifications();
       if (supported) {
         const state = await getNotificationPermissionState();
         setPermissionState(state);
@@ -69,6 +89,13 @@ export function PwaNotificationManager() {
     localStorage.setItem("pwa-ios-guide-dismissed", "true");
     setShowIOSInstallGuide(false);
   };
+
+  const handleDismissIncompatible = () => {
+    localStorage.setItem("pwa-ios-incompatible-dismissed", "true");
+    setShowIOSIncompatible(false);
+  };
+
+  const isIOSDevice = isIOS();
 
   return (
     <AnimatePresence>
@@ -137,8 +164,54 @@ export function PwaNotificationManager() {
         </motion.div>
       )}
 
-      {/* 2. Standalone / Standard Notification Permission Banner */}
-      {!showIOSInstallGuide && showPrompt && permissionState === "default" && (
+      {/* 2. iOS Incompatible Version Warning */}
+      {showIOSIncompatible && (
+        <motion.div
+          initial={{ opacity: 0, y: 50, scale: 0.95 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 50, scale: 0.95 }}
+          transition={{ type: "spring", stiffness: 300, damping: 25 }}
+          className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50"
+        >
+          <div className="p-5 overflow-hidden relative border border-amber-700/80 bg-amber-950 text-amber-100 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
+            <div className="flex justify-between items-start relative z-10">
+              <div className="flex items-center space-x-3">
+                <div className="p-2.5 rounded-2xl bg-amber-600 text-white shadow-md flex items-center justify-center">
+                  <AlertTriangle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-[11px] text-amber-400 font-extrabold uppercase tracking-wider mb-0.5">
+                    iOS Desatualizado
+                  </p>
+                  <h3 className="text-base font-black tracking-tight text-white">
+                    Atualização Necessária
+                  </h3>
+                </div>
+              </div>
+              <button 
+                onClick={handleDismissIncompatible}
+                className="p-1.5 hover:bg-amber-900 rounded-full text-amber-400 hover:text-white transition-colors"
+              >
+                <X className="w-4.5 h-4.5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-amber-200 mt-3 font-medium leading-relaxed relative z-10">
+              Seu iPhone precisa do iOS 16.4 ou superior para receber notificações no app instalado. Atualize em Ajustes &gt; Geral &gt; Atualização de Software.
+            </p>
+
+            <button
+              onClick={handleDismissIncompatible}
+              className="mt-3.5 w-full h-11 bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white rounded-2xl font-black text-xs transition-all shadow-lg border border-amber-400/20"
+            >
+              Fechar
+            </button>
+          </div>
+        </motion.div>
+      )}
+
+      {/* 3. Standalone / Standard Notification Permission Banner */}
+      {!showIOSInstallGuide && !showIOSIncompatible && showPrompt && permissionState === "default" && (
         <motion.div
           initial={{ opacity: 0, y: 50, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
@@ -173,7 +246,9 @@ export function PwaNotificationManager() {
             </div>
 
             <p className="text-xs text-slate-300 mt-3 font-medium leading-relaxed relative z-10">
-              Receba avisos em tempo real sempre que um frete for salvo ou pagamento for registrado na caderneta!
+              {isIOSDevice 
+                ? "Receba avisos quando usar o app. Notificações em background são limitadas no iPhone."
+                : "Receba avisos em tempo real sempre que um frete for salvo ou pagamento for registrado na caderneta!"}
             </p>
 
             <div className="mt-4 flex space-x-2.5 relative z-10">
