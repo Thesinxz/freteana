@@ -1,7 +1,17 @@
 // Service Worker for Frete Ana PWA
 const CACHE_NAME = 'freteana-cache-v1';
 
+const STATIC_ASSETS = [
+  '/',
+  '/icon-192.png',
+  '/icon-512.png',
+  '/manifest.json'
+];
+
 self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME).then(cache => cache.addAll(STATIC_ASSETS))
+  );
   self.skipWaiting();
 });
 

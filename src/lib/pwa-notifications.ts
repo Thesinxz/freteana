@@ -16,6 +16,34 @@ export function isStandalone(): boolean {
     (navigator as any).standalone === true;
 }
 
+export function isIOSSafari(): boolean {
+  if (typeof window === 'undefined') return false;
+  const ua = navigator.userAgent;
+  const isSafari = /^((?!chrome|android).)*safari/i.test(ua);
+  return isIOS() && isSafari;
+}
+
+export function getIOSVersion(): number {
+  if (typeof window === 'undefined' || !isIOS()) return 0;
+  const match = navigator.userAgent.match(/OS (\d+)_(\d+)/);
+  if (match) {
+    return parseFloat(`${match[1]}.${match[2]}`);
+  }
+  return 16.4; // Default safe assumption for modern iOS
+}
+
+export function canUseNotifications(): boolean {
+  if (typeof window === 'undefined') return false;
+  
+  // iOS requirement: PWA must be installed to Home Screen (standalone) & iOS 16.4+
+  if (isIOS()) {
+    if (!isStandalone()) return false;
+    if (getIOSVersion() < 16.4) return false;
+  }
+  
+  return 'Notification' in window && 'serviceWorker' in navigator;
+}
+
 export function isSecureOrigin(): boolean {
   if (typeof window === 'undefined') return false;
   return window.isSecureContext || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -35,17 +63,16 @@ export async function registerServiceWorker() {
 }
 
 export function isNotificationSupported() {
-  if (typeof window === 'undefined') return false;
-  return 'Notification' in window && 'serviceWorker' in navigator;
+  return canUseNotifications();
 }
 
 export async function getNotificationPermissionState() {
-  if (!isNotificationSupported()) return 'unsupported';
+  if (!canUseNotifications()) return 'unsupported';
   return Notification.permission;
 }
 
 export async function requestNotificationPermission() {
-  if (!isNotificationSupported()) {
+  if (!canUseNotifications()) {
     return 'unsupported';
   }
 
@@ -56,7 +83,7 @@ export async function requestNotificationPermission() {
       try {
         const registration = await navigator.serviceWorker.ready;
         
-        // FCM Push Token subscription using VAPID key
+        // FCM Push Token subscription using VAPID key (Supported on iOS 16.4+ PWA & Web/Android)
         const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY || "BOzu_h_uvtMQoYZIplMPwGn-3-bAWOBK_yFXBViCo-FiIFZtHjXLG7MQ2tzMq7kSXHcLupifK8h4_J-Y_h23agI";
         if (vapidKey && (await isMessagingSupported())) {
           try {
@@ -86,7 +113,7 @@ export async function requestNotificationPermission() {
 
         if (registration && registration.showNotification) {
           await registration.showNotification('Notificações Ativas! 🔔', {
-            body: 'Você receberá avisos quando novas anotações forem criadas na sua caderneta.',
+            body: 'Você receberá avisos em tempo real sobre fretes e lançamentos.',
             icon: '/icon-192.png',
             badge: '/icon-192.png',
             vibrate: [100, 50, 100],
@@ -105,7 +132,7 @@ export async function requestNotificationPermission() {
 }
 
 export async function sendLocalNotification(title: string, body: string, url: string = '/') {
-  if (!isNotificationSupported()) {
+  if (!canUseNotifications()) {
     return false;
   }
 
@@ -126,7 +153,6 @@ export async function sendLocalNotification(title: string, body: string, url: st
       }
     } catch (error) {
       console.error('Failed to send notification via Service Worker:', error);
-      // Fallback to standard browser Notification API if allowed
       try {
         if (typeof Notification !== 'undefined') {
           new Notification(title, {
