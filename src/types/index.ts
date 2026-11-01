@@ -5,15 +5,15 @@ export interface User {
   email: string;
   role: Role;
   name: string;
-  calendarTokens?: any;
+  calendarTokens?: Record<string, unknown>;
 }
 
 export interface Transporter {
   id: string;
   name: string;
-  color: string; // bg-class
-  textColor: string; // text-class
-  borderColor: string; // border-class
+  color: string; // bg-class or hex key
+  textColor?: string;
+  borderColor?: string;
   icon: string; // Lucide icon name
   active: boolean;
 }
@@ -25,6 +25,7 @@ export interface FreightRecord {
   createdAt: number;
   note?: string;
   canceled?: boolean;
+  deviceId?: string;
 }
 
 export interface PaymentRecord {
@@ -34,6 +35,7 @@ export interface PaymentRecord {
   note?: string;
   bank?: string;
   canceled?: boolean;
+  deviceId?: string;
 }
 
 export interface ExpenseRecord {
@@ -43,5 +45,24 @@ export interface ExpenseRecord {
   createdAt: number;
   note?: string;
   canceled?: boolean;
+  deviceId?: string;
 }
 
+export interface PickupRecord {
+  id: string;
+  transportId: string;
+  scheduledAt: number;
+  note?: string;
+  completed?: boolean;
+  canceled?: boolean;
+  createdAt: number;
+  deviceId?: string;
+}
+
+export interface PushNotificationPayload {
+  title: string;
+  body: string;
+  url?: string;
+  tag?: string;
+  senderDeviceId?: string;
+}

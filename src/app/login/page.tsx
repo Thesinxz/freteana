@@ -5,8 +5,8 @@ import { useRouter } from "next/navigation";
 import { signInWithEmailAndPassword } from "firebase/auth";
 import { auth } from "@/lib/firebase/config";
 import { toast } from "sonner";
-import { Truck } from "lucide-react";
 import { motion } from "framer-motion";
+import { ControleFreteLogo } from "@/components/BrandLogos";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -16,18 +16,16 @@ export default function LoginPage() {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     if (!email || !password) {
-      toast.error("Preencha todos os campos");
+      toast.error("Preencha todos os campos.");
       return;
     }
 
     try {
       setLoading(true);
       await signInWithEmailAndPassword(auth, email, password);
-      // Auth context will handle redirection, but we can also push directly
       router.push("/");
-    } catch (error: any) {
+    } catch (error) {
       console.error(error);
       toast.error("Erro ao fazer login. Verifique suas credenciais.");
     } finally {
@@ -36,57 +34,48 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex justify-center bg-slate-100/40 relative">
-      <div className="w-full max-w-md bg-gradient-to-br from-blue-900 to-blue-700 min-h-screen flex flex-col items-center justify-center p-6 relative shadow-[0_0_50px_rgba(0,0,0,0.02)] border-x border-slate-200/50 overflow-x-hidden">
-      <motion.div 
-        initial={{ opacity: 0, y: 20 }}
+    <div className="min-h-screen flex items-center justify-center bg-[#F4F8F6] p-4">
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        className="w-full max-w-sm"
+        className="w-full max-w-sm clean-card p-7"
       >
-        <div className="text-center mb-10">
-          <div className="bg-white/20 p-4 rounded-full inline-block mb-4 backdrop-blur-sm">
-            <Truck className="w-12 h-12 text-white" />
-          </div>
-          <h1 className="text-3xl font-bold text-white mb-2">Frete Ana</h1>
-          <p className="text-blue-200">Controle diário de transportes</p>
+        <div className="text-center mb-7">
+          <ControleFreteLogo className="w-14 h-14 mx-auto mb-3" />
+          <h1 className="text-2xl font-extrabold text-[#0F291E]">
+            Controle de Frete
+          </h1>
+          <p className="text-xs text-[#648274] mt-1">
+            Gestão diária de transportes e pagamentos
+          </p>
         </div>
 
-        <form onSubmit={handleLogin} className="space-y-4">
-          <div>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="Email"
-              className="w-full px-4 py-4 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/50 transition-all"
-              required
-            />
-          </div>
-          <div>
-            <input
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="Senha"
-              className="w-full px-4 py-4 rounded-xl bg-white/10 border border-white/20 text-white placeholder:text-white/60 focus:outline-none focus:ring-2 focus:ring-white/50 transition-all"
-              required
-            />
-          </div>
-
+        <form onSubmit={handleLogin} className="space-y-3.5">
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="E-mail"
+            className="w-full px-4 py-3 rounded-xl bg-[#F4F8F6] border border-[#DCE8E2] text-sm text-[#0F291E] placeholder:text-[#86A395] focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            required
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Senha"
+            className="w-full px-4 py-3 rounded-xl bg-[#F4F8F6] border border-[#DCE8E2] text-sm text-[#0F291E] placeholder:text-[#86A395] focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            required
+          />
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-4 mt-6 bg-white text-blue-900 font-bold rounded-xl shadow-lg hover:bg-blue-50 active:scale-[0.98] transition-all flex justify-center items-center"
+            className="w-full h-12 mt-2 bg-[#059669] hover:bg-[#047857] text-white font-bold text-sm rounded-xl shadow-xs transition-all flex justify-center items-center disabled:opacity-60"
           >
-            {loading ? (
-              <span className="animate-spin h-5 w-5 border-2 border-blue-900 border-t-transparent rounded-full" />
-            ) : (
-              "Entrar"
-            )}
+            {loading ? "Entrando..." : "Entrar"}
           </button>
         </form>
       </motion.div>
-      </div>
     </div>
   );
 }

@@ -1,27 +1,28 @@
 import type { Metadata, Viewport } from "next";
-import { Plus_Jakarta_Sans, Geist } from "next/font/google";
+import { Plus_Jakarta_Sans } from "next/font/google";
 import "./globals.css";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
+import { LedgerProvider } from "@/contexts/LedgerContext";
 import { Toaster } from "sonner";
-import { cn } from "@/lib/utils";
 import { PwaNotificationManager } from "@/components/PwaNotificationManager";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
-
-const jakarta = Plus_Jakarta_Sans({ subsets: ["latin"], variable: "--font-jakarta" });
+const jakarta = Plus_Jakarta_Sans({
+  subsets: ["latin"],
+  variable: "--font-jakarta",
+});
 
 export const metadata: Metadata = {
-  title: "Frete Ana",
-  description: "Controle de Fretes Mobile",
+  title: "Controle de Frete",
+  description: "Controle limpo e em tempo real de fretes, pagamentos e coletas.",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Frete Ana",
+    title: "Controle de Frete",
   },
   icons: {
-    apple: "/icon-192.png",
+    apple: "/apple-touch-icon.png",
   },
 };
 
@@ -30,7 +31,7 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 1,
   userScalable: false,
-  themeColor: "#1E40AF",
+  themeColor: "#059669",
 };
 
 export default function RootLayout({
@@ -39,17 +40,25 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning className={cn("font-sans", geist.variable)}>
-      <body className={`${jakarta.variable} font-sans bg-transparent text-slate-900 min-h-screen pb-safe`}>
+    <html lang="pt-BR" suppressHydrationWarning className={jakarta.variable}>
+      <body className="font-sans antialiased bg-[#F4F8F6] text-[#0F291E] min-h-screen">
         <AuthProvider>
           <ProtectedRoute>
-            {children}
+            <LedgerProvider>{children}</LedgerProvider>
           </ProtectedRoute>
         </AuthProvider>
         <PwaNotificationManager />
-        <Toaster position="top-center" richColors />
+        <Toaster
+          position="top-center"
+          richColors
+          toastOptions={{
+            style: {
+              borderRadius: "1rem",
+              border: "1px solid #C6F0DC",
+            },
+          }}
+        />
       </body>
     </html>
   );
 }
-

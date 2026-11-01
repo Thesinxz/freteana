@@ -1,27 +1,23 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save } from "lucide-react";
+import { Save } from "lucide-react";
 import { toast } from "sonner";
-import { motion } from "framer-motion";
 import { useLedger } from "@/hooks/useLedger";
-import { sendLocalNotification } from "@/lib/pwa-notifications";
-
+import { AppShell } from "@/components/AppShell";
 
 export default function NovaColetaPage() {
   const router = useRouter();
-  const { transporters } = useLedger();
+  const { transporters, addPickup } = useLedger();
+  const activeTransporters = transporters.filter((t) => t.active);
+
   const [transportId, setTransportId] = useState("");
   const [date, setDate] = useState("");
   const [note, setNote] = useState("");
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    if (transporters.length > 0 && !transportId) {
-      setTransportId(transporters[0].id);
-    }
-  }, [transporters, transportId]);
+  const selectedTransportId = transportId || activeTransporters[0]?.id || "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -31,124 +27,77 @@ export default function NovaColetaPage() {
     }
 
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
-      toast.success("Coleta agendada com sucesso!");
-      
-      // Notify PWA
-      const transport = transporters.find(t => t.id === transportId);
-      const name = transport ? transport.name : "Transportadora";
-      
-      let formattedDate = date;
-      try {
-        const d = new Date(date);
-        formattedDate = d.toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-      } catch (err) {}
-
-      sendLocalNotification(
-        "Nova Coleta Agendada! 📅",
-        `Coleta com ${name} agendada para ${formattedDate}.${note ? ` Observação: ${note}` : ''}`,
-        "/agenda"
+    try {
+      const ok = await addPickup(
+        selectedTransportId,
+        new Date(date).getTime(),
+        note.trim()
       );
-
-      router.push("/agenda");
-    }, 1000);
-
+      if (ok) {
+        router.push("/agenda");
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
-    <div className="min-h-screen flex justify-center bg-slate-100/40 relative pt-safe pb-safe">
-      <div className="w-full max-w-md bg-slate-50/70 min-h-screen flex flex-col relative pb-10 shadow-[0_0_50px_rgba(0,0,0,0.02)] border-x border-slate-200/50 backdrop-blur-3xl overflow-x-hidden">
-      <header className="p-4 flex items-center mb-2 bg-white shadow-sm rounded-b-3xl">
-        <button 
-          onClick={() => router.back()}
-          className="p-2 -ml-2 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors"
-        >
-          <ArrowLeft className="w-6 h-6 text-slate-800" />
-        </button>
-        <h1 className="text-xl font-bold ml-2 text-slate-800">Nova Coleta</h1>
-      </header>
-
-      <main className="flex-1 p-4">
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="space-y-2"
-          >
-            <label className="text-sm font-bold text-slate-600 ml-1">Transportador</label>
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-              <select 
-                value={transportId}
-                onChange={(e) => setTransportId(e.target.value)}
-                className="w-full p-4 bg-transparent focus:outline-none text-slate-800 font-medium"
-              >
-                {transporters.map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </div>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.1 }}
-            className="space-y-2"
-          >
-            <label className="text-sm font-bold text-slate-600 ml-1">Data e Hora</label>
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-              <input 
-                type="datetime-local" 
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full p-4 bg-transparent focus:outline-none text-slate-800 font-medium"
-                required
-              />
-            </div>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="space-y-2"
-          >
-            <label className="text-sm font-bold text-slate-600 ml-1">Observações (opcional)</label>
-            <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm">
-              <textarea 
-                value={note}
-                onChange={(e) => setNote(e.target.value)}
-                placeholder="Ex: Retirar na porta dos fundos"
-                className="w-full p-4 bg-transparent focus:outline-none text-slate-800 resize-none min-h-[100px]"
-              />
-            </div>
-          </motion.div>
-
-          <motion.div 
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.3 }}
-            className="pt-4"
-          >
-            <button
-              type="submit"
-              disabled={loading}
-              className="w-full h-14 bg-blue-600 text-white rounded-xl font-bold text-lg shadow-lg shadow-blue-600/20 active:scale-[0.98] transition-all flex items-center justify-center disabled:opacity-50"
+    <AppShell title="Nova Coleta" subtitle="Agendar retirada de mercadoria">
+      <div className="max-w-lg mx-auto clean-card p-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-xs font-bold text-[#526D60] mb-1.5">
+              Transportadora
+            </label>
+            <select
+              value={selectedTransportId}
+              onChange={(e) => setTransportId(e.target.value)}
+              className="w-full p-3.5 rounded-xl bg-[#F4F8F6] border border-[#DCE8E2] text-sm font-semibold text-[#0F291E] focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
             >
-              {loading ? (
-                <span className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full" />
-              ) : (
-                <>
-                  <Save className="w-5 h-5 mr-2" />
-                  Salvar Coleta
-                </>
-              )}
-            </button>
-          </motion.div>
+              {activeTransporters.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#526D60] mb-1.5">
+              Data e Hora
+            </label>
+            <input
+              type="datetime-local"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full p-3.5 rounded-xl bg-[#F4F8F6] border border-[#DCE8E2] text-sm font-semibold text-[#0F291E] focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-[#526D60] mb-1.5">
+              Observações (opcional)
+            </label>
+            <textarea
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Ex: Retirar na porta dos fundos"
+              rows={3}
+              className="w-full p-3.5 rounded-xl bg-[#F4F8F6] border border-[#DCE8E2] text-sm text-[#0F291E] resize-none focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            />
+          </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full h-12 bg-[#059669] hover:bg-[#047857] text-white rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50"
+          >
+            <Save className="w-4 h-4" />
+            <span>{loading ? "Salvando..." : "Salvar Coleta"}</span>
+          </button>
         </form>
-      </main>
       </div>
-    </div>
+    </AppShell>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState } from "react";
-import { User, Role } from "@/types";
+import { createContext, useContext } from "react";
+import { User } from "@/types";
 
 interface AuthContextType {
   user: User | null;
@@ -9,33 +9,26 @@ interface AuthContextType {
   loading: boolean;
 }
 
+const DEFAULT_ADMIN_USER: User = {
+  uid: "controle_frete_admin",
+  email: "contato@lojinhadocelular.com",
+  role: "admin",
+  name: "Controle de Frete",
+};
+
 const AuthContext = createContext<AuthContextType>({
-  user: null,
+  user: DEFAULT_ADMIN_USER,
   firebaseUser: null,
-  loading: true,
+  loading: false,
 });
 
 export const useAuth = () => useContext(AuthContext);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    // Como não teremos login, vamos forçar um usuário "admin/driver" automático instantaneamente
-    const mockUser: User = {
-      uid: "fretebela_admin_123",
-      email: "contato@lojinhadocelular.com",
-      role: "admin", 
-      name: "Ana (Admin)",
-    };
-    
-    setUser(mockUser);
-    setLoading(false);
-  }, []);
-
   return (
-    <AuthContext.Provider value={{ user, firebaseUser: null, loading }}>
+    <AuthContext.Provider
+      value={{ user: DEFAULT_ADMIN_USER, firebaseUser: null, loading: false }}
+    >
       {children}
     </AuthContext.Provider>
   );

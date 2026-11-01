@@ -1,65 +1,75 @@
-// Service Worker for Frete Ana PWA
-const CACHE_NAME = 'freteana-cache-v1';
+// Service Worker for Controle de Frete PWA (W3C Web Push — Android, Desktop & iOS 16.4+ Home Screen PWA)
+const CACHE_NAME = 'controle-frete-cache-v3';
 const STATIC_ASSETS = [
   '/',
   '/icon-192.png',
   '/icon-512.png',
+  '/apple-touch-icon.png',
   '/manifest.json'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(STATIC_ASSETS);
-    })
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(STATIC_ASSETS)).catch(() => {})
   );
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    caches.keys().then((keys) =>
+      Promise.all(
+        keys
+          .filter((key) => key !== CACHE_NAME)
+          .map((oldKey) => caches.delete(oldKey))
+      )
+    ).then(() => self.clients.claim())
+  );
 });
 
-// Handle push notification events
-// NOTA: Evento 'push' NÃO funciona em iOS Safari/PWA.
-// Funciona apenas em Android Chrome e Desktop Chrome.
+// Handle W3C Web Push events (Android Chrome, Desktop browsers, and iOS 16.4+ Home Screen PWAs)
 self.addEventListener('push', (event) => {
-  let data = {};
+  let payload = {};
   if (event.data) {
     try {
-      data = event.data.json();
-    } catch (e) {
-      data = { body: event.data.text() };
+      payload = event.data.json();
+    } catch {
+      payload = { body: event.data.text() };
     }
   }
 
-  const title = data.title || 'Novo Lançamento - Frete Ana';
+  const notifSource = payload.notification || payload;
+  const title = notifSource.title || 'Controle de Frete';
+  const body = notifSource.body || 'Uma nova movimentação foi registrada na caderneta.';
+  const targetUrl = (payload.data && payload.data.url) || payload.url || '/';
+  const tag = payload.tag || ('controle-frete-' + Date.now());
+
   const options = {
-    body: data.body || 'Uma nova anotação foi registrada na caderneta.',
-    icon: '/icon-192.png',
-    badge: '/icon-192.png',
-    vibrate: [100, 50, 100],
-    data: {
-      url: data.url || '/'
-    },
-    tag: data.tag || 'freteana-notification',
-    renotify: true
+    body,
+    icon: notifSource.icon || '/icon-192.png',
+    badge: notifSource.badge || '/icon-192.png',
+    data: { url: targetUrl },
+    tag,
+    renotify: Boolean(payload.renotify),
   };
 
   event.waitUntil(self.registration.showNotification(title, options));
 });
 
-// Handle notification click events (redirect to PWA)
+// Open or focus the PWA when the user taps a notification
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  const urlToOpen = new URL(event.notification.data?.url || '/', self.location.origin).href;
+  const relativeUrl = event.notification.data?.url || '/';
+  const urlToOpen = new URL(relativeUrl, self.location.origin).href;
 
   event.waitUntil(
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (let i = 0; i < windowClients.length; i++) {
-        const client = windowClients[i];
-        if (client.url === urlToOpen && 'focus' in client) {
+      for (const client of windowClients) {
+        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+          if ('navigate' in client && client.url !== urlToOpen) {
+            client.navigate(urlToOpen).catch(() => {});
+          }
           return client.focus();
         }
       }

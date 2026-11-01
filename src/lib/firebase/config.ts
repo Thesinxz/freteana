@@ -1,13 +1,12 @@
 import { initializeApp, getApps, getApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth';
-import { 
-  getFirestore, 
-  initializeFirestore, 
-  persistentLocalCache, 
+import {
+  getFirestore,
+  initializeFirestore,
+  persistentLocalCache,
   persistentMultipleTabManager,
-  Firestore
+  Firestore,
 } from 'firebase/firestore';
-import { getMessaging, Messaging, isSupported } from 'firebase/messaging';
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "AIzaSyBZKgOjATklotjcWzerD5tqPvODNkqJByw",
@@ -21,17 +20,19 @@ const firebaseConfig = {
 let app: FirebaseApp;
 let db: Firestore;
 let auth: Auth;
-let messaging: Messaging | null = null;
 
 if (!getApps().length) {
   app = initializeApp(firebaseConfig);
 
-  // Enable offline persistence with modern API
-  try {
-    db = initializeFirestore(app, {
-      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-    });
-  } catch {
+  if (typeof window !== 'undefined') {
+    try {
+      db = initializeFirestore(app, {
+        localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+      });
+    } catch {
+      db = getFirestore(app);
+    }
+  } else {
     db = getFirestore(app);
   }
 } else {
@@ -39,23 +40,15 @@ if (!getApps().length) {
   db = getFirestore(app);
 }
 
-try {
-  auth = getAuth(app);
-} catch (error) {
-  console.warn("Firebase auth not initialized due to missing/invalid API key:", error);
+if (typeof window !== 'undefined') {
+  try {
+    auth = getAuth(app);
+  } catch (error) {
+    console.warn("Firebase auth initialization warning:", error);
+    auth = {} as Auth;
+  }
+} else {
   auth = {} as Auth;
 }
 
-if (typeof window !== 'undefined') {
-  isSupported().then((supported) => {
-    if (supported) {
-      try {
-        messaging = getMessaging(app);
-      } catch (e) {
-        console.warn("FCM messaging init error:", e);
-      }
-    }
-  });
-}
-
-export { app, auth, db, messaging };
+export { app, auth, db };

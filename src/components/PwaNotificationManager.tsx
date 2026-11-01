@@ -1,83 +1,136 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Bell, X, Sparkles, Share, PlusSquare, Smartphone, AlertTriangle } from "lucide-react";
-import { motion, AnimatePresence } from "framer-motion";
-import { 
-  registerServiceWorker, 
-  requestNotificationPermission,
+import { useEffect, useState } from "react";
+import {
+  AlertTriangle,
+  Bell,
+  CheckCircle2,
+  PlusSquare,
+  Share,
+  Smartphone,
+  Sparkles,
+  X,
+} from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import {
   canUseNotifications,
+  getIOSVersion,
+  getNotificationPermissionState,
   isIOS,
   isStandalone,
-  isIOSSafari,
-  getNotificationPermissionState
+  registerServiceWorker,
+  requestNotificationPermission,
+  sendTestPushNotification,
+  syncPushSubscription,
 } from "@/lib/pwa-notifications";
-
-function getIOSVersion(): number {
-  const match = /CPU.*OS ([0-9_]{1,5})/i.exec(navigator.userAgent);
-  if (!match) return 0;
-  return parseFloat(match[1].replace(/_/g, '.'));
-}
+import { toast } from "sonner";
 
 export function PwaNotificationManager() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [showIOSInstallGuide, setShowIOSInstallGuide] = useState(false);
   const [showIOSIncompatible, setShowIOSIncompatible] = useState(false);
   const [permissionState, setPermissionState] = useState<string>("default");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    // 1. Register Service Worker
-    registerServiceWorker();
+    void registerServiceWorker();
 
-    // 2. Check notification compatibility & status
-    const initNotifications = async () => {
+    const init = async () => {
       const iosDevice = isIOS();
-      const standaloneMode = isStandalone();
+      const standalone = isStandalone();
       const dismissedNotif = localStorage.getItem("pwa-notif-prompt-dismissed");
       const dismissedIOS = localStorage.getItem("pwa-ios-guide-dismissed");
-      const dismissedIncompatible = localStorage.getItem("pwa-ios-incompatible-dismissed");
+      const dismissedIncompatible = localStorage.getItem(
+        "pwa-ios-incompatible-dismissed"
+      );
 
-      // On iOS in Safari (not saved to Home Screen yet)
-      if (iosDevice && !standaloneMode && dismissedIOS !== "true") {
-        const timer = setTimeout(() => {
-          setShowIOSInstallGuide(true);
-        }, 1500);
-        return () => clearTimeout(timer);
+      if (iosDevice && !standalone) {
+        if (dismissedIOS !== "true") {
+          setTimeout(() => setShowIOSInstallGuide(true), 1200);
+        }
+        return;
       }
 
-      // iOS installed but old version (< 16.4)
-      if (iosDevice && standaloneMode) {
+      if (iosDevice && standalone) {
         const version = getIOSVersion();
-        if (version > 0 && version < 16.4 && dismissedIncompatible !== "true") {
-          const timer = setTimeout(() => {
-            setShowIOSIncompatible(true);
-          }, 1500);
-          return () => clearTimeout(timer);
+        if (
+          version > 0 &&
+          version < 16.4 &&
+          dismissedIncompatible !== "true"
+        ) {
+          setTimeout(() => setShowIOSIncompatible(true), 1200);
+          return;
         }
       }
 
-      // If standalone or desktop/android
-      const supported = canUseNotifications();
-      if (supported) {
+      if (canUseNotifications()) {
         const state = await getNotificationPermissionState();
         setPermissionState(state);
 
-        if (state === "default" && dismissedNotif !== "true") {
-          const timer = setTimeout(() => {
-            setShowPrompt(true);
-          }, 2000);
-          return () => clearTimeout(timer);
+        if (state === "granted") {
+          // Crucial: ensure existing permitted devices register/refresh their Web Push endpoint!
+          await syncPushSubscription();
+        } else if (state === "default" && dismissedNotif !== "true") {
+          setTimeout(() => setShowPrompt(true), 1500);
         }
       }
     };
 
-    initNotifications();
+    void init();
+
+    const handleOpenDialog = async () => {
+      if (isIOS() && !isStandalone()) {
+        setShowIOSInstallGuide(true);
+        return;
+      }
+      if (isIOS() && isStandalone()) {
+        const version = getIOSVersion();
+        if (version > 0 && version < 16.4) {
+          setShowIOSIncompatible(true);
+          return;
+        }
+      }
+      const state = await getNotificationPermissionState();
+      setPermissionState(state);
+
+      if (state === "granted") {
+        toast.info("Enviando notificação de teste...");
+        const ok = await sendTestPushNotification();
+        if (ok) {
+          toast.success("Notificação de teste enviada!");
+        }
+      } else if (state === "denied") {
+        toast.error(
+          "As notificações estão bloqueadas nas configurações do navegador/aparelho. Libere nas configurações do site para receber alertas."
+        );
+      } else {
+        setShowPrompt(true);
+      }
+    };
+
+    window.addEventListener("freteana:open-notif-settings", handleOpenDialog);
+    return () => {
+      window.removeEventListener(
+        "freteana:open-notif-settings",
+        handleOpenDialog
+      );
+    };
   }, []);
 
   const handleEnableNotifications = async () => {
-    const result = await requestNotificationPermission();
-    setPermissionState(result);
-    setShowPrompt(false);
+    setBusy(true);
+    try {
+      const result = await requestNotificationPermission();
+      setPermissionState(result);
+      setShowPrompt(false);
+      if (result === "granted") {
+        toast.success("Alertas ativados com sucesso!");
+      } else if (result === "denied") {
+        toast.error("Permissão negada no navegador.");
+      }
+    } finally {
+      setBusy(false);
+    }
   };
 
   const handleDismissPrompt = () => {
@@ -95,179 +148,175 @@ export function PwaNotificationManager() {
     setShowIOSIncompatible(false);
   };
 
-  const isIOSDevice = isIOS();
-
   return (
     <AnimatePresence>
-      {/* 1. iOS Safari Banner: Guide to Add to Home Screen */}
+      {/* 1. Guia de Instalação iOS (Clean Esmeralda & Gelo) */}
       {showIOSInstallGuide && (
         <motion.div
-          initial={{ opacity: 0, y: 50, scale: 0.95 }}
+          initial={{ opacity: 0, y: 30, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 50, scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50"
+          exit={{ opacity: 0, y: 30, scale: 0.97 }}
+          className="fixed bottom-24 lg:bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-50"
         >
-          <div className="p-5 overflow-hidden relative border border-slate-700/80 bg-slate-900 text-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
-            {/* Ambient glows */}
-            <div className="absolute -top-10 -right-10 w-28 h-28 bg-blue-600 rounded-full mix-blend-screen filter blur-3xl opacity-30 pointer-events-none"></div>
-
-            <div className="flex justify-between items-start relative z-10">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-2xl bg-blue-600 text-white shadow-md flex items-center justify-center">
-                  <Smartphone className="w-5 h-5 animate-bounce" />
+          <div className="bg-white border border-emerald-200 rounded-3xl p-5 shadow-[0_16px_45px_rgba(5,150,105,0.14)]">
+            <div className="flex justify-between items-start gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <Smartphone className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-[11px] text-blue-400 font-extrabold uppercase tracking-wider mb-0.5 flex items-center">
-                    <Sparkles className="w-3.5 h-3.5 mr-1" />
-                    Notificações no iPhone
-                  </p>
-                  <h3 className="text-base font-black tracking-tight text-white">
-                    Instalar PWA no iOS
+                  <span className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    Alertas no iPhone
+                  </span>
+                  <h3 className="text-base font-extrabold text-[#0F291E]">
+                    Adicione à Tela de Início
                   </h3>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={handleDismissIOSGuide}
-                className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-full text-[#648274] hover:bg-emerald-50 hover:text-[#0F291E] transition-colors"
               >
-                <X className="w-4.5 h-4.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 mt-3 font-medium leading-relaxed relative z-10">
-              Para receber alertas no iOS, siga estes 3 passos simples no Safari:
+            <p className="text-xs text-[#526D60] mt-3 leading-relaxed">
+              No iPhone, o Apple Push funciona assim que o app é salvo na tela inicial:
             </p>
 
-            <div className="mt-3 space-y-2.5 text-xs relative z-10 bg-slate-800/90 border border-slate-700/80 p-3.5 rounded-2xl shadow-inner">
-              <div className="flex items-center space-x-2.5">
-                <span className="font-black text-white bg-blue-600 px-2 py-0.5 rounded-md text-xs shadow-sm">1</span>
-                <span className="text-slate-200">Toque em <strong className="text-white font-extrabold">Compartilhar <Share className="w-3.5 h-3.5 inline mx-0.5 text-blue-400" /></strong> no Safari.</span>
+            <div className="mt-3 space-y-2 text-xs bg-[#F4F8F6] border border-[#DCE8E2] p-3.5 rounded-2xl">
+              <div className="flex items-center gap-2.5 text-[#1E3A2F]">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                  1
+                </span>
+                <span>
+                  Toque em <strong>Compartilhar</strong>{" "}
+                  <Share className="w-3.5 h-3.5 inline text-emerald-600" /> no Safari.
+                </span>
               </div>
-              <div className="flex items-center space-x-2.5">
-                <span className="font-black text-white bg-blue-600 px-2 py-0.5 rounded-md text-xs shadow-sm">2</span>
-                <span className="text-slate-200">Selecione <strong className="text-white font-extrabold">Adicionar à Tela de Início <PlusSquare className="w-3.5 h-3.5 inline mx-0.5 text-blue-400" /></strong>.</span>
+              <div className="flex items-center gap-2.5 text-[#1E3A2F]">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                  2
+                </span>
+                <span>
+                  Escolha <strong>Adicionar à Tela de Início</strong>{" "}
+                  <PlusSquare className="w-3.5 h-3.5 inline text-emerald-600" />.
+                </span>
               </div>
-              <div className="flex items-center space-x-2.5">
-                <span className="font-black text-white bg-blue-600 px-2 py-0.5 rounded-md text-xs shadow-sm">3</span>
-                <span className="text-slate-200">Abra pelo ícone da tela inicial para receber alertas!</span>
+              <div className="flex items-center gap-2.5 text-[#1E3A2F]">
+                <span className="w-5 h-5 rounded-full bg-emerald-600 text-white font-bold flex items-center justify-center text-xs shrink-0">
+                  3
+                </span>
+                <span>Abra pelo novo ícone e toque em <strong>Ativar Alertas</strong>!</span>
               </div>
             </div>
 
             <button
               onClick={handleDismissIOSGuide}
-              className="mt-3.5 w-full h-11 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl font-black text-xs transition-all shadow-lg border border-blue-400/20"
+              className="mt-4 w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl font-bold text-xs transition-all shadow-sm"
             >
-              Entendido
+              Entendi
             </button>
           </div>
         </motion.div>
       )}
 
-      {/* 2. iOS Incompatible Version Warning */}
+      {/* 2. Aviso iOS Antigo */}
       {showIOSIncompatible && (
         <motion.div
-          initial={{ opacity: 0, y: 50, scale: 0.95 }}
+          initial={{ opacity: 0, y: 30, scale: 0.97 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 50, scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50"
+          exit={{ opacity: 0, y: 30, scale: 0.97 }}
+          className="fixed bottom-24 lg:bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-50"
         >
-          <div className="p-5 overflow-hidden relative border border-amber-700/80 bg-amber-950 text-amber-100 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
-            <div className="flex justify-between items-start relative z-10">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-2xl bg-amber-600 text-white shadow-md flex items-center justify-center">
+          <div className="bg-white border border-amber-200 rounded-3xl p-5 shadow-lg">
+            <div className="flex justify-between items-start">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-amber-100 text-amber-700 flex items-center justify-center">
                   <AlertTriangle className="w-5 h-5" />
                 </div>
                 <div>
-                  <p className="text-[11px] text-amber-400 font-extrabold uppercase tracking-wider mb-0.5">
-                    iOS Desatualizado
-                  </p>
-                  <h3 className="text-base font-black tracking-tight text-white">
-                    Atualização Necessária
+                  <span className="text-xs font-bold text-amber-700">
+                    Atualização do iOS
+                  </span>
+                  <h3 className="text-sm font-extrabold text-[#0F291E]">
+                    Requer iOS 16.4 ou superior
                   </h3>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={handleDismissIncompatible}
-                className="p-1.5 hover:bg-amber-900 rounded-full text-amber-400 hover:text-white transition-colors"
+                className="p-1.5 rounded-full text-[#648274] hover:bg-amber-50"
               >
-                <X className="w-4.5 h-4.5" />
+                <X className="w-4 h-4" />
               </button>
             </div>
-
-            <p className="text-xs text-amber-200 mt-3 font-medium leading-relaxed relative z-10">
-              Seu iPhone precisa do iOS 16.4 ou superior para receber notificações no app instalado. Atualize em Ajustes &gt; Geral &gt; Atualização de Software.
+            <p className="text-xs text-[#526D60] mt-3 leading-relaxed">
+              Atualize seu iPhone em Ajustes &gt; Geral &gt; Atualização de Software para receber alertas Push.
             </p>
-
-            <button
-              onClick={handleDismissIncompatible}
-              className="mt-3.5 w-full h-11 bg-amber-600 hover:bg-amber-700 active:scale-[0.98] text-white rounded-2xl font-black text-xs transition-all shadow-lg border border-amber-400/20"
-            >
-              Fechar
-            </button>
           </div>
         </motion.div>
       )}
 
-      {/* 3. Standalone / Standard Notification Permission Banner */}
-      {!showIOSInstallGuide && !showIOSIncompatible && showPrompt && permissionState === "default" && (
-        <motion.div
-          initial={{ opacity: 0, y: 50, scale: 0.95 }}
-          animate={{ opacity: 1, y: 0, scale: 1 }}
-          exit={{ opacity: 0, y: 50, scale: 0.95 }}
-          transition={{ type: "spring", stiffness: 300, damping: 25 }}
-          className="fixed bottom-20 left-4 right-4 md:left-auto md:right-6 md:w-96 z-50"
-        >
-          <div className="p-5 overflow-hidden relative border border-slate-700/80 bg-slate-900 text-white rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.4)]">
-            <div className="absolute -top-10 -right-10 w-28 h-28 bg-blue-600 rounded-full mix-blend-screen filter blur-3xl opacity-30 pointer-events-none"></div>
-
-            <div className="flex justify-between items-start relative z-10">
-              <div className="flex items-center space-x-3">
-                <div className="p-2.5 rounded-2xl bg-blue-600 text-white shadow-md flex items-center justify-center animate-pulse">
-                  <Bell className="w-5 h-5" />
+      {/* 3. Convite Limpo de Ativação de Alertas Push */}
+      {!showIOSInstallGuide &&
+        !showIOSIncompatible &&
+        showPrompt &&
+        permissionState === "default" && (
+          <motion.div
+            initial={{ opacity: 0, y: 30, scale: 0.97 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 30, scale: 0.97 }}
+            className="fixed bottom-24 lg:bottom-6 left-4 right-4 sm:left-auto sm:right-6 sm:w-96 z-50"
+          >
+            <div className="bg-white border border-emerald-200 rounded-3xl p-5 shadow-[0_16px_45px_rgba(5,150,105,0.14)]">
+              <div className="flex justify-between items-start gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-11 h-11 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                    <Bell className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <span className="text-xs font-bold text-emerald-700 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      Avisos em Tempo Real
+                    </span>
+                    <h3 className="text-base font-extrabold text-[#0F291E]">
+                      Ativar Alertas da Caderneta?
+                    </h3>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-[11px] text-blue-400 font-extrabold uppercase tracking-wider mb-0.5 flex items-center">
-                    <Sparkles className="w-3.5 h-3.5 mr-1" />
-                    Notificações PWA
-                  </p>
-                  <h3 className="text-base font-black tracking-tight text-white">
-                    Ativar Alertas de Frete?
-                  </h3>
-                </div>
+                <button
+                  onClick={handleDismissPrompt}
+                  className="p-1.5 rounded-full text-[#648274] hover:bg-emerald-50 hover:text-[#0F291E] transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <button 
-                onClick={handleDismissPrompt}
-                className="p-1.5 hover:bg-slate-800 rounded-full text-slate-400 hover:text-white transition-colors"
-              >
-                <X className="w-4.5 h-4.5" />
-              </button>
-            </div>
 
-            <p className="text-xs text-slate-300 mt-3 font-medium leading-relaxed relative z-10">
-              {isIOSDevice 
-                ? "Receba avisos quando usar o app. Notificações em background são limitadas no iPhone."
-                : "Receba avisos em tempo real sempre que um frete for salvo ou pagamento for registrado na caderneta!"}
-            </p>
+              <p className="text-xs text-[#526D60] mt-3 leading-relaxed">
+                Receba uma notificação no celular sempre que um novo frete for lançado ou um pagamento for confirmado!
+              </p>
 
-            <div className="mt-4 flex space-x-2.5 relative z-10">
-              <button
-                onClick={handleEnableNotifications}
-                className="flex-1 h-11 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white rounded-2xl font-black text-xs shadow-lg flex items-center justify-center transition-all border border-blue-400/20"
-              >
-                Ativar Notificações 🔔
-              </button>
-              <button
-                onClick={handleDismissPrompt}
-                className="px-4 h-11 bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white rounded-2xl font-bold text-xs transition-all border border-slate-700"
-              >
-                Depois
-              </button>
+              <div className="mt-4 flex gap-2.5">
+                <button
+                  onClick={handleEnableNotifications}
+                  disabled={busy}
+                  className="flex-1 h-11 bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white rounded-2xl font-bold text-xs shadow-sm transition-all disabled:opacity-60"
+                >
+                  {busy ? "Ativando..." : "Ativar Alertas 🔔"}
+                </button>
+                <button
+                  onClick={handleDismissPrompt}
+                  className="px-4 h-11 bg-[#F4F8F6] hover:bg-emerald-50 text-[#526D60] rounded-2xl font-semibold text-xs border border-[#DCE8E2] transition-all"
+                >
+                  Agora não
+                </button>
+              </div>
             </div>
-          </div>
-        </motion.div>
-      )}
+          </motion.div>
+        )}
     </AnimatePresence>
   );
 }

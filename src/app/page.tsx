@@ -1,133 +1,229 @@
 "use client";
 
+import { useMemo, useState } from "react";
+import Link from "next/link";
+import { format, isSameDay, parseISO, startOfMonth } from "date-fns";
+import { ptBR } from "date-fns/locale";
+import {
+  Calendar as CalendarIcon,
+  Plus,
+  Save,
+  Share2,
+  Trash2,
+} from "lucide-react";
+import confetti from "canvas-confetti";
+import { toast } from "sonner";
 import { useLedger } from "@/hooks/useLedger";
+import { AppShell } from "@/components/AppShell";
+import { BalanceCard } from "@/components/BalanceCard";
+import { BankIcon } from "@/components/BrandLogos";
 import { TransportCard } from "@/components/TransportCard";
 import { PixCards } from "@/components/PixCards";
 import { SwipeableItem } from "@/components/SwipeableItem";
-import { formatCurrency, cn } from "@/lib/utils";
-import { format, isSameDay, parseISO } from "date-fns";
-import { ptBR } from "date-fns/locale";
-import { 
-  Calendar as CalendarIcon, 
-  DollarSign, 
-  Save, 
-  ArrowUpRight, 
-  Plus, 
-  Sparkles, 
-  Share2, 
-  LayoutDashboard,
-  Home,
-  Truck,
-  Sun,
-  Zap,
-  Star,
-  CheckCircle2,
-  Landmark,
-  ArrowDownRight,
-  Trash2
-} from "lucide-react";
-import { useRouter } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
-import Link from "next/link";
-import { useState } from "react";
-import { toast } from "sonner";
-import confetti from "canvas-confetti";
+import { QuickPaymentModal } from "@/components/QuickPaymentModal";
+import { cn, formatCurrency } from "@/lib/utils";
+import {
+  resolveTransporterIcon,
+  resolveTransporterPalette,
+} from "@/lib/transporter-styles";
 
-const ICONS: Record<string, React.ElementType> = {
-  Truck,
-  Caminhão: Truck,
-  Sun,
-  Sol: Sun,
-  Zap,
-  Cometa: Zap,
-  Star,
-  Estrela: Star,
-};
+type HistoryFilter = "all" | "freight" | "payment";
 
 export default function DashboardPage() {
-  const { freights, payments, balance, netProfit, transporters, loading, addFreight, cancelRecord } = useLedger();
-  const router = useRouter();
+  const {
+    freights,
+    payments,
+    totalFreights,
+    totalPayments,
+    balance,
+    netProfit,
+    transporters,
+    loading,
+    addFreightsBatch,
+    cancelRecord,
+  } = useLedger();
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
-  const [viewMode, setViewMode] = useState<'balance' | 'profit'>('balance');
-  
-  const [selectedDateStr, setSelectedDateStr] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
+  const [selectedDateStr, setSelectedDateStr] = useState(
+    format(new Date(), "yyyy-MM-dd")
+  );
+
+  const activeTransporters = useMemo(
+    () => transporters.filter((t) => t.active),
+    [transporters]
+  );
+
+  const monthReceived = useMemo(() => {
+    const monthStart = startOfMonth(new Date()).getTime();
+    return payments
+      .filter((p) => !p.canceled && p.createdAt >= monthStart)
+      .reduce((acc, p) => acc + p.amount, 0);
+  }, [payments]);
+
+  const draftEntries = useMemo(() => {
+    return activeTransporters
+      .map((t) => ({
+        transportId: t.id,
+        amount: parseInt(drafts[t.id] || "0", 10) || 0,
+      }))
+      .filter((item) => item.amount > 0);
+  }, [activeTransporters, drafts]);
+
+  const draftTotal = useMemo(
+    () => draftEntries.reduce((acc, e) => acc + e.amount, 0),
+    [draftEntries]
+  );
 
   const handleDraftChange = (id: string, value: string) => {
-    setDrafts(prev => ({ ...prev, [id]: value }));
+    setDrafts((prev) => ({ ...prev, [id]: value }));
   };
 
-  const handleShare = (dateStr: string, dayFreights: any[]) => {
-    const dateObj = parseISO(dateStr);
-    const dateFormatted = format(dateObj, "dd/MM/yyyy");
-    let message = `*Resumo de Fretes - ${dateFormatted}*\n\n`;
-    
+  const handleSaveAll = async () => {
+    if (draftEntries.length === 0) return;
+    setIsSaving(true);
+
+    let customMs = Date.now();
+    const todayStr = format(new Date(), "yyyy-MM-dd");
+    if (selectedDateStr && selectedDateStr !== todayStr) {
+      const parsed = parseISO(selectedDateStr);
+      parsed.setHours(12, 0, 0, 0);
+      customMs = parsed.getTime();
+    }
+
+    try {
+      const savedCount = await addFreightsBatch(draftEntries, customMs);
+      if (savedCount > 0) {
+        setDrafts({});
+        confetti({
+          particleCount: 65,
+          spread: 60,
+          origin: { y: 0.8 },
+          colors: ["#10B981", "#34D399", "#A7F3D0"],
+        });
+      }
+    } catch {
+      // Handled inside addFreightsBatch
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  type TimelineItem = {
+    id: string;
+    amount: number;
+    createdAt: number;
+    type: "freight" | "payment";
+    transportId?: string;
+    bank?: string;
+    note?: string;
+  };
+
+  const timelineItems = useMemo<TimelineItem[]>(() => {
+    const fItems: TimelineItem[] = freights
+      .filter((f) => !f.canceled)
+      .map((f) => ({ ...f, type: "freight" }));
+    const pItems: TimelineItem[] = payments
+      .filter((p) => !p.canceled)
+      .map((p) => ({ ...p, type: "payment" }));
+
+    return [...fItems, ...pItems]
+      .filter((item) =>
+        historyFilter === "all" ? true : item.type === historyFilter
+      )
+      .sort((a, b) => b.createdAt - a.createdAt);
+  }, [freights, payments, historyFilter]);
+
+  const groupedTimeline = useMemo(() => {
+    return timelineItems.reduce(
+      (acc, item) => {
+        const dateStr = format(new Date(item.createdAt), "yyyy-MM-dd");
+        if (!acc[dateStr]) acc[dateStr] = [];
+        acc[dateStr].push(item);
+        return acc;
+      },
+      {} as Record<string, TimelineItem[]>
+    );
+  }, [timelineItems]);
+
+  const sortedDates = useMemo(
+    () => Object.keys(groupedTimeline).sort((a, b) => b.localeCompare(a)),
+    [groupedTimeline]
+  );
+
+  const handleShareDay = (dateStr: string, dayItems: TimelineItem[]) => {
+    const dayFreights = dayItems.filter((i) => i.type === "freight");
+    const dayPayments = dayItems.filter((i) => i.type === "payment");
+    const dateFormatted = format(parseISO(dateStr), "dd/MM/yyyy");
+    let message = `*Resumo do Dia — ${dateFormatted}*\n\n`;
+
     let totalDay = 0;
-    dayFreights.forEach((f: any) => {
-      const t = transporters.find(trans => trans.id === f.transportId);
-      message += `• ${t?.name || 'Transportadora'}: ${formatCurrency(f.amount / 100)}\n`;
+    dayFreights.forEach((f) => {
+      const t = transporters.find((trans) => trans.id === f.transportId);
+      message += `• ${t?.name || "Transportadora"}: ${formatCurrency(f.amount / 100)}\n`;
       totalDay += f.amount;
     });
-    
-    message += `\n*Total do Dia: ${formatCurrency(totalDay / 100)}*`;
-    
-    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+
+    dayPayments.forEach((p) => {
+      message += `• Pagamento (${p.bank || "Recebido"}): -${formatCurrency(p.amount / 100)}\n`;
+      totalDay -= p.amount;
+    });
+
+    message += `\n*Saldo do dia: ${formatCurrency(totalDay / 100)}*`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   const handleShareAll = () => {
-    let message = `*Resumo Geral de Lançamentos*\n\n`;
+    let message = `*Resumo Geral — Controle de Frete*\n\n`;
     let grandTotal = 0;
 
-    sortedDates.forEach(dateStr => {
+    sortedDates.forEach((dateStr) => {
       const dayItems = groupedTimeline[dateStr];
-      const dayFreights = dayItems.filter(i => i.type === 'freight');
-      const dayPayments = dayItems.filter(i => i.type === 'payment');
-      
+      const dayFreights = dayItems.filter((i) => i.type === "freight");
+      const dayPayments = dayItems.filter((i) => i.type === "payment");
       if (dayFreights.length === 0 && dayPayments.length === 0) return;
 
-      const dateObj = parseISO(dateStr);
-      const dateFormatted = format(dateObj, "dd/MM/yyyy");
-      
+      const dateFormatted = format(parseISO(dateStr), "dd/MM/yyyy");
       message += `*--- ${dateFormatted} ---*\n`;
       let totalDay = 0;
-      dayFreights.forEach((f: any) => {
-        const t = transporters.find(trans => trans.id === f.transportId);
-        message += `• ${t?.name || 'Transportadora'}: ${formatCurrency(f.amount / 100)}\n`;
+
+      dayFreights.forEach((f) => {
+        const t = transporters.find((trans) => trans.id === f.transportId);
+        message += `• ${t?.name || "Transportadora"}: ${formatCurrency(f.amount / 100)}\n`;
         totalDay += f.amount;
       });
-      
-      dayPayments.forEach((p: any) => {
-        message += `• RECEBIMENTO (${p.bank || 'Outro'}): -${formatCurrency(p.amount / 100)}\n`;
+
+      dayPayments.forEach((p) => {
+        message += `• RECEBIMENTO (${p.bank || "Outro"}): -${formatCurrency(p.amount / 100)}\n`;
         totalDay -= p.amount;
       });
 
       message += `*Saldo do dia: ${formatCurrency(totalDay / 100)}*\n\n`;
       grandTotal += totalDay;
     });
-    
-    message += `*TOTAL GERAL: ${formatCurrency(grandTotal / 100)}*`;
-    
-    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
+
+    message += `*SALDO GERAL: ${formatCurrency(grandTotal / 100)}*`;
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   const handleShareUnpaid = () => {
-    // 1. Gather non-canceled freights and sort oldest first for correct FIFO settlement
     const activeFreights = [...freights]
-      .filter(f => !f.canceled)
+      .filter((f) => !f.canceled)
       .sort((a, b) => a.createdAt - b.createdAt);
 
-    // 2. Gather non-canceled payments
-    const activePayments = payments.filter(p => !p.canceled);
+    const activePayments = payments.filter((p) => !p.canceled);
     let totalPaid = activePayments.reduce((acc, p) => acc + p.amount, 0);
 
-    // 3. Subtract paid freights using FIFO logic
-    const unpaidFreights: { transportName: string; date: number; amount: number }[] = [];
+    const unpaidFreights: {
+      transportName: string;
+      date: number;
+      amount: number;
+    }[] = [];
 
-    activeFreights.forEach(freight => {
-      const transport = transporters.find(t => t.id === freight.transportId);
+    activeFreights.forEach((freight) => {
+      const transport = transporters.find((t) => t.id === freight.transportId);
       const transportName = transport ? transport.name : "Transportadora";
 
       if (totalPaid >= freight.amount) {
@@ -138,29 +234,29 @@ export default function DashboardPage() {
         unpaidFreights.push({
           transportName,
           date: freight.createdAt,
-          amount: unpaidAmount
+          amount: unpaidAmount,
         });
       } else {
         unpaidFreights.push({
           transportName,
           date: freight.createdAt,
-          amount: freight.amount
+          amount: freight.amount,
         });
       }
     });
 
     if (unpaidFreights.length === 0) {
-      toast.success("Tudo pago! Nenhum lançamento pendente de pagamento.");
+      toast.success("Tudo em dia! Nenhum frete pendente de pagamento.");
       return;
     }
 
     const dateFormatted = format(new Date(), "dd/MM/yyyy");
-    let message = `*Resumo de Lançamentos Pendentes - ${dateFormatted}*\n\n`;
+    let message = `*Resumo de Fretes Pendentes — ${dateFormatted}*\n\n`;
     let totalPending = 0;
 
-    unpaidFreights.forEach(f => {
-      const dateStr = format(new Date(f.date), "dd/MM/yyyy HH:mm");
-      message += `• *${f.transportName}* (${dateStr}): ${formatCurrency(f.amount / 100)}\n`;
+    unpaidFreights.forEach((f) => {
+      const dStr = format(new Date(f.date), "dd/MM/yyyy");
+      message += `• *${f.transportName}* (${dStr}): ${formatCurrency(f.amount / 100)}\n`;
       totalPending += f.amount;
     });
 
@@ -169,416 +265,336 @@ export default function DashboardPage() {
     message += `• Nubank (CPF): \`000.820.251-69\`\n`;
     message += `• Caixa (Telefone): \`67 98419-9182\``;
 
-    const url = `https://wa.me/?text=${encodeURIComponent(message)}`;
-    window.open(url, '_blank');
-  };
-
-  const hasAnyDraft = Object.values(drafts).some(val => parseInt(val || "0", 10) > 0);
-
-  const handleSaveAll = async () => {
-    setIsSaving(true);
-    let count = 0;
-    
-    let customMs = Date.now();
-    const todayStr = format(new Date(), "yyyy-MM-dd");
-    
-    if (selectedDateStr && selectedDateStr !== todayStr) {
-      const parsed = parseISO(selectedDateStr);
-      parsed.setHours(12, 0, 0, 0);
-      customMs = parsed.getTime();
-    }
-
-    try {
-      for (const transport of transporters) {
-        const val = parseInt(drafts[transport.id] || "0", 10);
-        if (val > 0) {
-          await addFreight(transport.id, val, customMs);
-          count++;
-        }
-      }
-      if (count > 0) {
-        toast.success(`${count} lançamento(s) salvo(s)!`);
-        setDrafts({});
-        
-        confetti({
-          particleCount: 100,
-          spread: 70,
-          origin: { y: 0.8 },
-          colors: ['#3B82F6', '#10B981', '#F59E0B']
-        });
-      }
-    } catch (err) {
-      toast.error("Erro ao salvar lançamentos.");
-    } finally {
-      setIsSaving(false);
-    }
+    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <span className="animate-spin h-10 w-10 border-4 border-blue-400 border-t-blue-600 rounded-full" />
+      <div className="min-h-screen flex items-center justify-center bg-[#F4F8F6]">
+        <span className="animate-spin h-10 w-10 border-4 border-[#D1FAE5] border-t-[#059669] rounded-full" />
       </div>
     );
   }
 
-  type TimelineItem = {
-    id: string;
-    amount: number;
-    createdAt: number;
-    type: 'freight' | 'payment';
-    transportId?: string;
-    bank?: string;
-    note?: string;
-  };
-
-  const validFreights: TimelineItem[] = freights.filter(f => !f.canceled).map(f => ({ ...f, type: 'freight' }));
-  const validPayments: TimelineItem[] = payments.filter(p => !p.canceled).map(p => ({ ...p, type: 'payment' }));
-  
-  const timelineItems = [...validFreights, ...validPayments].sort((a, b) => b.createdAt - a.createdAt);
-
-  const groupedTimeline = timelineItems.reduce((acc, item) => {
-    const localDate = new Date(item.createdAt);
-    const dateStr = format(localDate, "yyyy-MM-dd");
-    if (!acc[dateStr]) {
-      acc[dateStr] = [];
-    }
-    acc[dateStr].push(item);
-    return acc;
-  }, {} as Record<string, TimelineItem[]>);
-  
-  const sortedDates = Object.keys(groupedTimeline).sort((a, b) => b.localeCompare(a));
-  const hasDebt = balance > 0;
   return (
-    <div className="min-h-screen flex justify-center bg-slate-100/40 relative">
-      {/* Background decorations for desktop viewports */}
-      <div className="hidden lg:block absolute top-10 left-10 max-w-xs text-slate-800 pointer-events-none">
-        <div className="flex items-center space-x-2 mb-2">
-          <div className="p-2 rounded-xl bg-blue-600 text-white font-black text-xs">FA</div>
-          <h2 className="font-extrabold text-lg tracking-tight">Frete Ana</h2>
-        </div>
-        <p className="text-sm text-slate-500 font-medium">Controle e conciliação de fretes de forma mobile, simples e direta.</p>
-      </div>
-      
-      <div className="hidden lg:block absolute bottom-10 right-10 max-w-sm pointer-events-none text-right">
-        <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mb-1">Status do PWA</p>
-        <p className="text-sm text-emerald-600 font-extrabold flex items-center justify-end">
-          <span className="w-2 h-2 bg-emerald-500 rounded-full mr-2 animate-pulse"></span>
-          Conectado & Notificações Ativas
-        </p>
-      </div>
+    <AppShell title="Controle de Frete">
+      <div className="space-y-5">
+        {/* Card do Saldo Esmeralda & Gelo */}
+        <BalanceCard
+          balance={balance}
+          netProfit={netProfit}
+          totalFreights={totalFreights}
+          totalPayments={totalPayments}
+          monthReceived={monthReceived}
+          onOpenPayment={() => setPaymentModalOpen(true)}
+          onShareUnpaid={handleShareUnpaid}
+        />
 
-      {/* Centered Device Container */}
-      <div className="w-full max-w-md bg-slate-50/70 min-h-screen flex flex-col relative pb-32 shadow-[0_0_50px_rgba(0,0,0,0.02)] border-x border-slate-200/50 backdrop-blur-3xl overflow-x-hidden">
-      <header className="pt-safe px-4 pt-6 pb-6 relative z-10">
-        <div className="glass-card p-6 overflow-hidden relative border border-white/95 shadow-[0_12px_40px_rgba(0,0,0,0.03)] bg-white/75 backdrop-blur-2xl">
-          {/* Animated Glowing Ambient Blobs in header */}
-          <div className="absolute -top-24 -right-24 w-48 h-48 bg-blue-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob"></div>
-          <div className="absolute -bottom-24 -left-24 w-48 h-48 bg-purple-300 rounded-full mix-blend-multiply filter blur-3xl opacity-40 animate-blob animation-delay-2000"></div>
-          
-          <div className="flex justify-between items-center mb-6 relative z-10">
-            <div>
-              <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1.5 flex items-center">
-                <Sparkles className="w-3.5 h-3.5 mr-1 text-blue-500 animate-pulse" />
-                Painel Administrativo
-              </p>
-              <h1 className="text-xl font-black text-slate-800 capitalize tracking-tight flex items-center">
-                {format(new Date(), "EEEE, d 'de' MMMM", { locale: ptBR })}
-              </h1>
-            </div>
-            
-            <div className="flex items-center space-x-2">
-              <div className="relative group cursor-pointer">
-                <div className="w-11 h-11 rounded-full bg-gradient-to-tr from-blue-600 via-indigo-600 to-violet-600 flex items-center justify-center font-black text-white text-[13px] shadow-[0_4px_15px_rgba(79,70,229,0.3)] border border-white/60 transition-transform duration-300 group-hover:scale-105 active:scale-95">
-                  AN
-                </div>
-                <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-500 border-2 border-white rounded-full animate-pulse"></span>
-              </div>
-            </div>
-          </div>
-
-          {/* Premium Metallic Card Toggle */}
-          <motion.div 
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            className="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-950 rounded-[1.5rem] p-5.5 flex items-center justify-between shadow-[0_20px_50px_rgba(30,27,75,0.25)] relative z-10 overflow-hidden cursor-pointer border border-white/10"
-            onClick={() => setViewMode(prev => prev === 'balance' ? 'profit' : 'balance')}
-          >
-            <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top_right,_var(--tw-gradient-stops))] from-blue-500/20 via-transparent to-transparent"></div>
-            <div>
-              <div className="flex items-center space-x-1.5 mb-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-                <p className="text-[10px] text-slate-400 font-extrabold tracking-widest uppercase">
-                  {viewMode === 'balance' ? 'Saldo a Receber' : 'Lucro Líquido'}
-                </p>
-              </div>
-              <motion.p 
-                key={viewMode === 'balance' ? balance : netProfit}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="font-black text-3xl tracking-tight text-white leading-none font-sans"
-              >
-                {formatCurrency((viewMode === 'balance' ? balance : netProfit) / 100)}
-              </motion.p>
-            </div>
-            <div className={`p-3.5 rounded-2xl ${hasDebt ? 'bg-amber-400/90 text-amber-950 shadow-[0_0_20px_rgba(251,191,36,0.35)]' : 'bg-emerald-400/90 text-emerald-950 shadow-[0_0_20px_rgba(52,211,153,0.35)]'} transition-all duration-300`}>
-              <DollarSign className="w-5.5 h-5.5 stroke-[2.5]" />
-            </div>
-          </motion.div>
-
-          <div className="mt-5 flex gap-3 relative z-10">
-            <Link 
-              href="/acertar"
-              className="flex-1 h-12 bg-emerald-50/70 hover:bg-emerald-100/80 border border-emerald-200/50 rounded-2xl flex items-center justify-center font-bold text-emerald-700 shadow-[0_4px_12px_rgba(16,185,129,0.04)] active:scale-[0.97] transition-all text-xs"
-            >
-              <CheckCircle2 className="w-4 h-4 mr-2" />
-              Dar Baixa
-            </Link>
-            <button 
-              onClick={handleShareUnpaid}
-              className="flex-1 h-12 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-2xl flex items-center justify-center font-bold shadow-[0_8px_25px_rgba(37,99,235,0.22)] active:scale-[0.97] transition-all text-xs border border-blue-400/20"
-            >
-              <Share2 className="w-4 h-4 mr-2" />
-              Enviar Pendentes
-            </button>
-          </div>
-
-        </div>
-      </header>
-
-
-      <main className="flex-1 px-4 space-y-5 relative z-0">
-        <div className="flex justify-between items-center px-2">
-          <div>
-            <h2 className="text-slate-800 font-black text-lg tracking-tight">Novo Lançamento</h2>
-            <p className="text-[10px] text-slate-400 font-extrabold uppercase tracking-widest mt-0.5">Lançar na caderneta</p>
-          </div>
-          <div className="relative flex items-center bg-white/70 backdrop-blur-md border border-white/80 rounded-2xl px-3 py-1.5 shadow-[0_2px_10px_rgba(0,0,0,0.01)]">
-            <CalendarIcon className="w-3.5 h-3.5 text-blue-500 mr-2" />
-            <input 
-              type="date" 
-              value={selectedDateStr}
-              onChange={(e) => setSelectedDateStr(e.target.value)}
-              className="bg-transparent text-slate-700 text-xs font-black focus:outline-none transition-all cursor-pointer"
-            />
-          </div>
-        </div>
-        
-        <div className="space-y-4">
-          {transporters.filter(t => t.active).map((transport) => (
-            <TransportCard
-              key={transport.id}
-              config={transport}
-              value={drafts[transport.id] || ""}
-              onChange={(val) => handleDraftChange(transport.id, val)}
-            />
-          ))}
-        </div>
-
-        <AnimatePresence>
-          {hasAnyDraft && (
-            <motion.div
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: 20 }}
-              className="pt-4"
-            >
-              <button
-                onClick={handleSaveAll}
-                disabled={isSaving}
-                className="w-full h-14 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 active:scale-[0.98] text-white rounded-[1.25rem] font-bold text-lg shadow-[0_8px_30px_rgb(37,99,235,0.3)] flex items-center justify-center transition-all disabled:opacity-50 border border-blue-400/30"
-              >
-                {isSaving ? (
-                  <span className="animate-spin h-6 w-6 border-2 border-white border-t-transparent rounded-full" />
-                ) : (
-                  <>
-                    <Save className="w-5 h-5 mr-2" />
-                    Salvar na Caderneta
-                  </>
-                )}
-              </button>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
+        {/* Cartões de Chaves PIX com Logos da Caixa e Nubank */}
         <PixCards />
 
-        {sortedDates.length > 0 && (
-          <div className="mt-10 mb-8 space-y-8">
-            <div className="flex justify-between items-center px-2 mb-2">
-              <h2 className="text-slate-800 font-bold text-lg tracking-tight">Histórico</h2>
-              <button 
-                onClick={handleShareAll}
-                className="px-4 py-2 bg-blue-100 text-blue-700 rounded-full transition-colors flex items-center text-sm font-bold shadow-sm active:scale-95 hover:bg-blue-200"
-              >
-                <Share2 className="w-4 h-4 mr-2" />
-                Compartilhar Tudo
-              </button>
+        {/* Grid 2 Colunas no Desktop (Lançamento à esquerda + Extrato à direita) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+          {/* Coluna Esquerda: Lançamento Unificado */}
+          <section className="lg:col-span-5 lg:sticky lg:top-8 clean-card p-4 sm:p-5 space-y-4">
+            <div className="flex items-center justify-between gap-2 pb-3 border-b border-[#EEF5F1]">
+              <div>
+                <h2 className="text-base font-extrabold text-[#0F291E]">
+                  Lançar Fretes
+                </h2>
+                <p className="text-xs text-[#648274]">
+                  Preencha uma ou mais empresas
+                </p>
+              </div>
+
+              <label className="flex items-center gap-1.5 bg-[#F4F8F6] border border-[#DCE8E2] rounded-xl px-2.5 py-1.5 text-xs font-bold text-[#1E3A2F] cursor-pointer">
+                <CalendarIcon className="w-3.5 h-3.5 text-[#059669]" />
+                <input
+                  type="date"
+                  value={selectedDateStr}
+                  onChange={(e) => setSelectedDateStr(e.target.value)}
+                  className="bg-transparent focus:outline-none cursor-pointer text-xs font-bold"
+                />
+              </label>
             </div>
-            {sortedDates.map(dateStr => {
-              const dayItems = groupedTimeline[dateStr];
-              const dateObj = parseISO(dateStr);
-              const isToday = isSameDay(dateObj, new Date());
-              
-              return (
-                <motion.div 
-                  key={dateStr}
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
+
+            {activeTransporters.length > 0 ? (
+              <div className="space-y-2.5">
+                {activeTransporters.map((transport) => (
+                  <TransportCard
+                    key={transport.id}
+                    config={transport}
+                    value={drafts[transport.id] || ""}
+                    onChange={(val) => handleDraftChange(transport.id, val)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="p-6 text-center rounded-2xl bg-[#F4F8F6] border border-[#DCE8E2]">
+                <p className="text-xs text-[#526D60] mb-3">
+                  Nenhuma transportadora ativa cadastrada.
+                </p>
+                <Link
+                  href="/admin"
+                  className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#059669] text-white text-xs font-bold"
                 >
-                  <div className="flex justify-between items-center mb-4 px-2">
-                    <h2 className="text-slate-800 font-bold tracking-tight">
-                      Lançamentos de {isToday ? "Hoje" : format(dateObj, "dd/MM/yyyy", { locale: ptBR })}
-                    </h2>
-                    <button 
-                      onClick={() => handleShare(dateStr, dayItems.filter(i => i.type === 'freight'))}
-                      className="p-2 text-blue-500 hover:bg-blue-50 rounded-full transition-colors flex items-center text-xs font-bold"
+                  <Plus className="w-3.5 h-3.5" />
+                  Cadastrar Transportadora
+                </Link>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleSaveAll}
+              disabled={isSaving || draftEntries.length === 0}
+              className={cn(
+                "w-full h-12 rounded-2xl font-bold text-sm flex items-center justify-center gap-2 transition-all",
+                draftEntries.length > 0
+                  ? "bg-[#059669] hover:bg-[#047857] active:scale-[0.99] text-white shadow-sm"
+                  : "bg-[#EEF5F1] text-[#86A395] cursor-not-allowed"
+              )}
+            >
+              {isSaving ? (
+                <span className="animate-spin h-5 w-5 border-2 border-white border-t-transparent rounded-full" />
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  <span>
+                    {draftTotal > 0
+                      ? `Salvar Lançamento (${formatCurrency(draftTotal / 100)})`
+                      : "Digite um valor acima para salvar"}
+                  </span>
+                </>
+              )}
+            </button>
+          </section>
+
+          {/* Coluna Direita: Últimas Movimentações Limpas (Zero fundo rosado!) */}
+          <section className="lg:col-span-7 clean-card p-4 sm:p-5 space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#EEF5F1]">
+              <div>
+                <h2 className="text-base font-extrabold text-[#0F291E]">
+                  Últimas Movimentações
+                </h2>
+                <p className="text-xs text-[#648274]">
+                  Histórico sincronizado em tempo real
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <div className="flex items-center bg-[#F4F8F6] p-1 rounded-xl border border-[#DCE8E2]">
+                  {(
+                    [
+                      { id: "all", label: "Todos" },
+                      { id: "freight", label: "Fretes" },
+                      { id: "payment", label: "Pagos" },
+                    ] as const
+                  ).map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      onClick={() => setHistoryFilter(tab.id)}
+                      className={cn(
+                        "px-2.5 py-1 rounded-lg text-xs font-bold transition-all",
+                        historyFilter === tab.id
+                          ? "bg-white text-[#047857] shadow-2xs"
+                          : "text-[#648274] hover:text-[#0F291E]"
+                      )}
                     >
-                      <Share2 className="w-4 h-4 mr-1" />
-                      Compartilhar
+                      {tab.label}
                     </button>
-                  </div>
-                  <div className="glass-card overflow-hidden divide-y divide-slate-100/50">
-                    {dayItems.map(item => {
-                      if (item.type === 'payment') {
-                        return (
-                          <SwipeableItem
-                            key={item.id}
-                            onDelete={() => cancelRecord('payment', item.id)}
-                            confirmTitle={`Deseja cancelar o pagamento de ${formatCurrency(item.amount / 100)}?`}
-                          >
-                            <div className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
-                              <div className="flex items-center space-x-4">
-                                <div className="p-2.5 rounded-2xl text-emerald-600 bg-emerald-100 shadow-sm flex items-center justify-center">
-                                  <ArrowDownRight className="w-4 h-4" />
-                                </div>
-                                <div>
-                                  <p className="font-bold text-slate-800">Pagamento Recebido</p>
-                                  <div className="flex items-center space-x-2">
-                                    <p className="text-xs text-slate-500 font-medium">{format(new Date(item.createdAt), "HH:mm")}</p>
-                                    {item.bank && (
-                                      <>
-                                        <span className="text-slate-300">•</span>
-                                        <p className="text-xs font-semibold text-emerald-600 flex items-center">
-                                          <Landmark className="w-3 h-3 mr-1" />
-                                          {item.bank}
-                                        </p>
-                                      </>
-                                    )}
+                  ))}
+                </div>
+
+                {sortedDates.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleShareAll}
+                    className="px-3 py-1.5 rounded-xl bg-[#ECFDF5] hover:bg-[#D1FAE5] text-[#047857] text-xs font-bold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Share2 className="w-3.5 h-3.5" />
+                    <span>Compartilhar</span>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {sortedDates.length === 0 ? (
+              <div className="py-12 text-center">
+                <p className="text-sm font-semibold text-[#526D60]">
+                  Nenhuma movimentação encontrada.
+                </p>
+                <p className="text-xs text-[#86A395] mt-1">
+                  Os fretes e pagamentos salvos aparecerão aqui imediatamente.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-5">
+                {sortedDates.map((dateStr) => {
+                  const dayItems = groupedTimeline[dateStr];
+                  const dateObj = parseISO(dateStr);
+                  const isToday = isSameDay(dateObj, new Date());
+
+                  return (
+                    <div key={dateStr} className="space-y-2">
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-xs font-extrabold uppercase tracking-wider text-[#648274]">
+                          {isToday
+                            ? "Hoje"
+                            : format(dateObj, "dd 'de' MMMM (EEEE)", {
+                                locale: ptBR,
+                              })}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleShareDay(dateStr, dayItems)}
+                          className="text-xs font-bold text-[#059669] hover:underline flex items-center gap-1"
+                        >
+                          <Share2 className="w-3 h-3" />
+                          Enviar dia
+                        </button>
+                      </div>
+
+                      <div className="space-y-2">
+                        {dayItems.map((item) => {
+                          if (item.type === "payment") {
+                            return (
+                              <SwipeableItem
+                                key={item.id}
+                                onDelete={() =>
+                                  cancelRecord("payment", item.id)
+                                }
+                                confirmTitle={`Deseja cancelar o recebimento de ${formatCurrency(item.amount / 100)}?`}
+                              >
+                                <div className="p-3.5 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-center justify-between gap-3">
+                                  <div className="flex items-center gap-3 min-w-0">
+                                    <BankIcon bank={item.bank} className="w-10 h-10" />
+                                    <div className="min-w-0">
+                                      <div className="text-xs sm:text-sm font-bold text-[#14532D] truncate">
+                                        Pagamento Recebido
+                                      </div>
+                                      <div className="flex items-center gap-2 text-xs text-[#166534]/85">
+                                        <span>
+                                          {format(
+                                            new Date(item.createdAt),
+                                            "HH:mm"
+                                          )}
+                                        </span>
+                                        {item.bank && (
+                                          <span className="font-semibold">
+                                            • {item.bank}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-2.5 shrink-0">
+                                    <span className="text-sm sm:text-base font-extrabold text-[#15803D]">
+                                      - {formatCurrency(item.amount / 100)}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        if (
+                                          confirm(
+                                            `Deseja remover o recebimento de ${formatCurrency(item.amount / 100)}?`
+                                          )
+                                        ) {
+                                          void cancelRecord("payment", item.id);
+                                        }
+                                      }}
+                                      className="p-1.5 rounded-lg text-[#648274] hover:text-rose-600 hover:bg-white/80 transition-colors"
+                                      title="Remover pagamento"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
                                   </div>
                                 </div>
-                              </div>
-                              <div className="flex items-center space-x-3">
-                                <span className="font-black text-lg text-emerald-600 tracking-tight">
-                                  - {formatCurrency(item.amount / 100)}
-                                </span>
-                                <button 
-                                  onClick={() => {
-                                    if (confirm(`Deseja cancelar o pagamento de ${formatCurrency(item.amount / 100)}?`)) {
-                                      cancelRecord('payment', item.id);
-                                    }
-                                  }}
-                                  className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors active:scale-95"
-                                  title="Cancelar Lançamento"
-                                >
-                                  <Trash2 className="w-4 h-4" />
-                                </button>
-                              </div>
-                            </div>
-                          </SwipeableItem>
-                        );
-                      }
+                              </SwipeableItem>
+                            );
+                          }
 
-                      // Freight item
-                      const transport = transporters.find(t => t.id === item.transportId);
-                      const iconKey = transport?.icon || 'Truck';
-                      const TransportIcon = ICONS[iconKey] || ICONS[iconKey.charAt(0).toUpperCase() + iconKey.slice(1).toLowerCase()] || Truck;
-                      
-                      const COLOR_MAP: Record<string, string> = {
-                        'bg-blue-600': '#2563eb',
-                        'bg-blue-800': '#1e40af',
-                        'bg-emerald-600': '#059669',
-                        'bg-amber-600': '#d97706',
-                        'bg-purple-600': '#9333ea',
-                        'bg-red-600': '#dc2626',
-                        'bg-pink-600': '#db2777',
-                        'bg-slate-400': '#94a3b8',
-                      };
-                      const bgColor = transport?.color ? (COLOR_MAP[transport.color] || '#3b82f6') : '#94a3b8';
+                          const transport = transporters.find(
+                            (t) => t.id === item.transportId
+                          );
+                          const Icon = resolveTransporterIcon(transport?.icon);
+                          const palette = resolveTransporterPalette(
+                            transport?.color
+                          );
 
-                      return (
-                        <SwipeableItem
-                          key={item.id}
-                          onDelete={() => cancelRecord('freight', item.id)}
-                          confirmTitle={`Deseja cancelar o frete de ${formatCurrency(item.amount / 100)} (${transport?.name || 'Transportadora'})?`}
-                        >
-                          <div className="p-4 flex justify-between items-center hover:bg-white/40 transition-colors">
-                            <div className="flex items-center space-x-4">
-                              <div 
-                                className="p-2.5 rounded-2xl text-white shadow-sm flex items-center justify-center"
-                                style={{ backgroundColor: bgColor }}
-                              >
-                                <TransportIcon className="w-4 h-4" />
+                          return (
+                            <SwipeableItem
+                              key={item.id}
+                              onDelete={() => cancelRecord("freight", item.id)}
+                              confirmTitle={`Deseja remover o frete de ${formatCurrency(item.amount / 100)} (${transport?.name || "Transportadora"})?`}
+                            >
+                              <div className="p-3.5 rounded-2xl bg-white border border-[#E6F0EB] hover:border-[#C6F0DC] flex items-center justify-between gap-3 transition-colors">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div
+                                    style={{
+                                      backgroundColor: palette.softBg,
+                                      borderColor: palette.softBorder,
+                                      color: palette.iconText,
+                                    }}
+                                    className="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0"
+                                  >
+                                    <Icon className="w-4 h-4" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <div className="text-xs sm:text-sm font-bold text-[#0F291E] truncate">
+                                      {transport?.name || "Transportadora"}
+                                    </div>
+                                    <div className="text-xs text-[#7A9688]">
+                                      {format(
+                                        new Date(item.createdAt),
+                                        "HH:mm"
+                                      )}
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-2.5 shrink-0">
+                                  <span className="text-sm sm:text-base font-extrabold text-[#0F291E]">
+                                    {formatCurrency(item.amount / 100)}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      if (
+                                        confirm(
+                                          `Deseja remover o frete de ${formatCurrency(item.amount / 100)}?`
+                                        )
+                                      ) {
+                                        void cancelRecord("freight", item.id);
+                                      }
+                                    }}
+                                    className="p-1.5 rounded-lg text-[#86A395] hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                    title="Remover frete"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
-                              <div>
-                                <p className="font-bold text-slate-800">{transport?.name || '...'}</p>
-                                <p className="text-xs text-slate-500 font-medium">{format(new Date(item.createdAt), "HH:mm")}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center space-x-3">
-                              <span className="font-black text-lg text-slate-800 tracking-tight">
-                                {formatCurrency(item.amount / 100)}
-                              </span>
-                              <button 
-                                onClick={() => {
-                                  if (confirm(`Deseja cancelar o frete de ${formatCurrency(item.amount / 100)} (${transport?.name || 'Transportadora'})?`)) {
-                                    cancelRecord('freight', item.id);
-                                  }
-                                }}
-                                className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-colors active:scale-95"
-                                title="Cancelar Lançamento"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
-                            </div>
-                          </div>
-                        </SwipeableItem>
-                      );
-                    })}
-                  </div>
-                </motion.div>
-              );
-            })}
-          </div>
-        )}
-      </main>
-
-      {/* Bottom Nav Mobile */}
-      <nav className="flex fixed bottom-0 max-w-md w-full left-1/2 -translate-x-1/2 bg-white/85 backdrop-blur-md border-t border-slate-100/85 flex justify-around items-center p-2.5 z-50 shadow-[0_-4px_30px_rgba(0,0,0,0.03)] pb-safe">
-        <button 
-          onClick={() => router.push("/")}
-          className="flex flex-col items-center justify-center py-1.5 px-4 rounded-2xl text-blue-600 bg-blue-50/80 transition-all font-semibold"
-        >
-          <Home className="w-5 h-5" />
-          <span className="text-[9px] font-bold mt-1 uppercase tracking-wider">Início</span>
-        </button>
-        <button 
-          onClick={() => router.push("/agenda")}
-          className="flex flex-col items-center justify-center py-1.5 px-4 rounded-2xl text-slate-400 hover:text-slate-700 transition-all"
-        >
-          <CalendarIcon className="w-5 h-5" />
-          <span className="text-[9px] font-bold mt-1 uppercase tracking-wider">Agenda</span>
-        </button>
-        <button 
-          onClick={() => router.push("/admin")}
-          className="flex flex-col items-center justify-center py-1.5 px-4 rounded-2xl text-slate-400 hover:text-slate-700 transition-all"
-        >
-          <LayoutDashboard className="w-5 h-5" />
-          <span className="text-[9px] font-bold mt-1 uppercase tracking-wider">Gestão</span>
-        </button>
-      </nav>
-
+                            </SwipeableItem>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
-    </div>
+
+      {/* Modal Rápido de Baixa / Pagamento */}
+      <QuickPaymentModal
+        open={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+      />
+    </AppShell>
   );
 }
