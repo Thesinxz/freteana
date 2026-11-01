@@ -1,6 +1,8 @@
 import { PushNotificationPayload } from "@/types";
 
 const DEVICE_ID_STORAGE_KEY = "freteana-device-id";
+const DEVICE_NAME_STORAGE_KEY = "controle-frete-device-name";
+const MUTE_OWN_PUSH_STORAGE_KEY = "controle-frete-mute-self";
 
 export function getDeviceId(): string {
   if (typeof window === "undefined") return "server";
@@ -13,6 +15,54 @@ export function getDeviceId(): string {
     localStorage.setItem(DEVICE_ID_STORAGE_KEY, existing);
   }
   return existing;
+}
+
+export function getDeviceName(): string {
+  if (typeof window === "undefined") return "";
+  return (localStorage.getItem(DEVICE_NAME_STORAGE_KEY) || "").trim();
+}
+
+export function setDeviceName(name: string): void {
+  if (typeof window === "undefined") return;
+  const trimmed = name.trim();
+  if (trimmed) {
+    localStorage.setItem(DEVICE_NAME_STORAGE_KEY, trimmed);
+  } else {
+    localStorage.removeItem(DEVICE_NAME_STORAGE_KEY);
+  }
+  window.dispatchEvent(new CustomEvent("freteana:device-prefs-changed"));
+  if (canUseNotifications() && Notification.permission === "granted") {
+    void syncPushSubscription();
+  }
+}
+
+export function getMuteOwnPush(): boolean {
+  if (typeof window === "undefined") return false;
+  return localStorage.getItem(MUTE_OWN_PUSH_STORAGE_KEY) === "true";
+}
+
+export function setMuteOwnPush(mute: boolean): void {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(MUTE_OWN_PUSH_STORAGE_KEY, mute ? "true" : "false");
+  window.dispatchEvent(new CustomEvent("freteana:device-prefs-changed"));
+}
+
+export async function clearAppUnreadBadge(): Promise<void> {
+  if (typeof window === "undefined") return;
+  try {
+    const nav = navigator as Navigator & {
+      clearAppBadge?: () => Promise<void>;
+    };
+    if (typeof nav.clearAppBadge === "function") {
+      await nav.clearAppBadge();
+    }
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      reg.active?.postMessage({ type: "CLEAR_BADGE" });
+    }
+  } catch {
+    // Ignore badge API errors on unsupported platforms
+  }
 }
 
 export function isIOS(): boolean {
@@ -99,7 +149,6 @@ export async function registerServiceWorker(): Promise<ServiceWorkerRegistration
 
 /**
  * Ensures the browser has a valid W3C PushSubscription synced to Firestore via /api/push.
- * Works on Android Chrome/PWA, Desktop browsers, and iOS 16.4+ Home Screen PWAs.
  */
 export async function syncPushSubscription(): Promise<boolean> {
   if (!canUseNotifications() || Notification.permission !== "granted") {
@@ -122,7 +171,6 @@ export async function syncPushSubscription(): Promise<boolean> {
     const expectedServerKey = urlBase64ToUint8Array(publicKey);
     let subscription = await registration.pushManager.getSubscription();
 
-    // If an older subscription used a different VAPID key, renew it cleanly
     if (subscription && subscription.options?.applicationServerKey) {
       const currentKey = new Uint8Array(
         subscription.options.applicationServerKey
@@ -148,6 +196,7 @@ export async function syncPushSubscription(): Promise<boolean> {
         action: "subscribe",
         subscription: serialized,
         deviceId: getDeviceId(),
+        deviceName: getDeviceName(),
         platform: isIOS() ? "iOS-PWA" : "Web/Android",
         userAgent: navigator.userAgent,
       }),
@@ -169,7 +218,6 @@ export async function requestNotificationPermission(): Promise<string> {
   }
 
   try {
-    // Must be invoked directly from user gesture (especially on iOS 16.4+ Safari PWA)
     const permission = await Notification.requestPermission();
 
     if (permission === "granted") {
@@ -233,16 +281,16 @@ export async function sendLocalNotification(
 }
 
 /**
- * Broadcasts a real server-dispatched Web Push notification to all subscribed devices
- * (Android, Desktop, and iOS 16.4+ Home Screen PWAs — even when closed),
- * falling back to a local notification if no push subscription delivered.
+ * Broadcasts a real server-dispatched Web Push notification to all subscribed devices.
+ * Respects `getMuteOwnPush()` when the user chooses not to receive Push on the sender device.
  */
 export async function notifyAllDevices(
   payload: PushNotificationPayload
 ): Promise<void> {
   const tag = payload.tag || `freteana-${Date.now()}`;
+  const excludeSender = payload.excludeSender ?? getMuteOwnPush();
+
   try {
-    // Ensure current device is also subscribed if permission was already granted
     if (canUseNotifications() && Notification.permission === "granted") {
       await syncPushSubscription().catch(() => {});
     }
@@ -257,12 +305,16 @@ export async function notifyAllDevices(
         url: payload.url || "/",
         tag,
         senderDeviceId: getDeviceId(),
+        excludeSender,
       }),
     });
 
     if (res.ok) {
-      const stats = (await res.json()) as { sent?: number };
-      if ((stats.sent ?? 0) > 0) {
+      const stats = (await res.json()) as {
+        sent?: number;
+        skippedSender?: number;
+      };
+      if ((stats.sent ?? 0) > 0 || (excludeSender && (stats.skippedSender ?? 0) > 0)) {
         return;
       }
     }
@@ -270,13 +322,14 @@ export async function notifyAllDevices(
     console.warn("Push broadcast fallback to local notification:", err);
   }
 
-  // Fallback if zero push subscriptions are registered yet
-  await sendLocalNotification(
-    payload.title,
-    payload.body,
-    payload.url || "/",
-    tag
-  );
+  if (!excludeSender) {
+    await sendLocalNotification(
+      payload.title,
+      payload.body,
+      payload.url || "/",
+      tag
+    );
+  }
 }
 
 export async function sendTestPushNotification(): Promise<boolean> {
@@ -288,7 +341,10 @@ export async function sendTestPushNotification(): Promise<boolean> {
     const res = await fetch("/api/push", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "test" }),
+      body: JSON.stringify({
+        action: "test",
+        deviceName: getDeviceName(),
+      }),
     });
     if (res.ok) {
       const data = (await res.json()) as { sent?: number };

@@ -1,5 +1,6 @@
-// Service Worker for Controle de Frete PWA (W3C Web Push — Android, Desktop & iOS 16.4+ Home Screen PWA)
-const CACHE_NAME = 'controle-frete-cache-v3';
+// Service Worker for Controle de Frete PWA (W3C Web Push + App Badge — Android, Desktop & iOS 16.4+)
+const CACHE_NAME = 'controle-frete-cache-v4';
+const BADGE_CACHE_KEY = '/__badge_counter__';
 const STATIC_ASSETS = [
   '/',
   '/icon-192.png',
@@ -7,6 +8,47 @@ const STATIC_ASSETS = [
   '/apple-touch-icon.png',
   '/manifest.json'
 ];
+
+async function incrementBadgeCount() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const prev = await cache.match(BADGE_CACHE_KEY);
+    let current = 0;
+    if (prev) {
+      const parsed = await prev.json().catch(() => ({ count: 0 }));
+      current = Number(parsed.count) || 0;
+    }
+    const next = current + 1;
+    await cache.put(
+      BADGE_CACHE_KEY,
+      new Response(JSON.stringify({ count: next }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    if (self.navigator && 'setAppBadge' in self.navigator) {
+      await self.navigator.setAppBadge(next);
+    }
+  } catch {
+    // Ignore badge errors on unsupported browsers
+  }
+}
+
+async function resetBadgeCount() {
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    await cache.put(
+      BADGE_CACHE_KEY,
+      new Response(JSON.stringify({ count: 0 }), {
+        headers: { 'Content-Type': 'application/json' },
+      })
+    );
+    if (self.navigator && 'clearAppBadge' in self.navigator) {
+      await self.navigator.clearAppBadge();
+    }
+  } catch {
+    // Ignore badge errors on unsupported browsers
+  }
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -25,6 +67,12 @@ self.addEventListener('activate', (event) => {
       )
     ).then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data && event.data.type === 'CLEAR_BADGE') {
+    event.waitUntil(resetBadgeCount());
+  }
 });
 
 // Handle W3C Web Push events (Android Chrome, Desktop browsers, and iOS 16.4+ Home Screen PWAs)
@@ -53,7 +101,12 @@ self.addEventListener('push', (event) => {
     renotify: Boolean(payload.renotify),
   };
 
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, options),
+      incrementBadgeCount(),
+    ])
+  );
 });
 
 // Open or focus the PWA when the user taps a notification
@@ -64,18 +117,21 @@ self.addEventListener('notificationclick', (event) => {
   const urlToOpen = new URL(relativeUrl, self.location.origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
-      for (const client of windowClients) {
-        if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-          if ('navigate' in client && client.url !== urlToOpen) {
-            client.navigate(urlToOpen).catch(() => {});
+    Promise.all([
+      resetBadgeCount(),
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+        for (const client of windowClients) {
+          if (client.url.startsWith(self.location.origin) && 'focus' in client) {
+            if ('navigate' in client && client.url !== urlToOpen) {
+              client.navigate(urlToOpen).catch(() => {});
+            }
+            return client.focus();
           }
-          return client.focus();
         }
-      }
-      if (self.clients.openWindow) {
-        return self.clients.openWindow(urlToOpen);
-      }
-    })
+        if (self.clients.openWindow) {
+          return self.clients.openWindow(urlToOpen);
+        }
+      }),
+    ])
   );
 });

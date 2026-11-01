@@ -10,18 +10,19 @@ import {
   Calendar,
   CheckCircle2,
   Home,
-  Send,
+  Settings2,
+  UserCheck,
   Wallet,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useLedger } from "@/hooks/useLedger";
 import {
   canUseNotifications,
+  getDeviceName,
   getNotificationPermissionState,
   isIOS,
   isStandalone,
   requestNotificationPermission,
-  sendTestPushNotification,
 } from "@/lib/pwa-notifications";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -66,12 +67,13 @@ export function AppShell({
   const pathname = usePathname();
   const { balance } = useLedger();
   const [notifStatus, setNotifStatus] = useState<string>("default");
-  const [testingPush, setTestingPush] = useState(false);
+  const [deviceName, setDeviceNameState] = useState<string>("");
 
   useEffect(() => {
     let active = true;
     const checkStatus = async () => {
       if (typeof window === "undefined") return;
+      const currentName = getDeviceName();
       let nextStatus: string;
       if (isIOS() && !isStandalone()) {
         nextStatus = "ios-install";
@@ -81,6 +83,7 @@ export function AppShell({
         nextStatus = await getNotificationPermissionState();
       }
       if (active) {
+        setDeviceNameState(currentName);
         setNotifStatus(nextStatus);
       }
     };
@@ -93,28 +96,21 @@ export function AppShell({
     };
     window.addEventListener("freteana:permission-changed", handler);
     window.addEventListener("freteana:push-synced", handler);
+    window.addEventListener("freteana:device-prefs-changed", handler);
     return () => {
       active = false;
       window.clearTimeout(timer);
       window.removeEventListener("freteana:permission-changed", handler);
       window.removeEventListener("freteana:push-synced", handler);
+      window.removeEventListener("freteana:device-prefs-changed", handler);
     };
   }, []);
 
-  const handleBellAction = async () => {
-    if (notifStatus === "granted") {
-      setTestingPush(true);
-      try {
-        const ok = await sendTestPushNotification();
-        if (ok) {
-          toast.success("Alerta de teste enviado!");
-        }
-      } finally {
-        setTestingPush(false);
-      }
-      return;
-    }
+  const openDeviceSettings = () => {
+    window.dispatchEvent(new CustomEvent("freteana:open-notif-settings"));
+  };
 
+  const handlePrimaryBellClick = async () => {
     if (notifStatus === "default") {
       const res = await requestNotificationPermission();
       setNotifStatus(res);
@@ -123,8 +119,7 @@ export function AppShell({
       }
       return;
     }
-
-    window.dispatchEvent(new CustomEvent("freteana:open-notif-settings"));
+    openDeviceSettings();
   };
 
   const todayFormatted = format(new Date(), "EEEE, d 'de' MMMM", {
@@ -136,7 +131,6 @@ export function AppShell({
       {/* Sidebar Clean — Desktop */}
       <aside className="hidden lg:flex w-68 shrink-0 bg-white border-r border-[#E2ECE7] flex-col justify-between p-6 sticky top-0 h-screen print:hidden">
         <div>
-          {/* Logo Brand */}
           <Link href="/" className="flex items-center gap-3 mb-8 group">
             <ControleFreteLogo className="w-10 h-10 group-hover:scale-105 transition-transform" />
             <div>
@@ -149,7 +143,6 @@ export function AppShell({
             </div>
           </Link>
 
-          {/* Menu */}
           <nav className="space-y-1.5">
             {NAV_ITEMS.map((item) => {
               const isActive =
@@ -188,8 +181,22 @@ export function AppShell({
           </nav>
         </div>
 
-        {/* Card de Status de Notificações na Sidebar */}
-        <div className="space-y-3">
+        {/* Card de Aparelho & Notificações na Sidebar */}
+        <div className="space-y-2.5">
+          <button
+            type="button"
+            onClick={openDeviceSettings}
+            className="w-full px-3.5 py-2.5 rounded-2xl bg-[#F4F8F6] hover:bg-[#ECFDF5] border border-[#DCE8E2] flex items-center justify-between gap-2 text-xs font-bold text-[#1E3A2F] transition-colors"
+          >
+            <span className="flex items-center gap-2 truncate">
+              <UserCheck className="w-4 h-4 text-[#059669] shrink-0" />
+              <span className="truncate">
+                {deviceName ? `Aparelho: ${deviceName}` : "Identificar aparelho"}
+              </span>
+            </span>
+            <Settings2 className="w-3.5 h-3.5 text-[#648274] shrink-0" />
+          </button>
+
           {notifStatus === "granted" ? (
             <div className="rounded-2xl p-4 bg-[#F0FDF4] border border-[#BBF7D0]">
               <div className="flex items-center justify-between mb-1">
@@ -200,15 +207,15 @@ export function AppShell({
                 <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               </div>
               <p className="text-xs text-[#166534]/85 leading-snug mb-3">
-                Fretes e pagamentos notificam este aparelho em tempo real.
+                Fretes, baixas e estornos notificam em tempo real.
               </p>
               <button
-                onClick={handleBellAction}
-                disabled={testingPush}
+                type="button"
+                onClick={openDeviceSettings}
                 className="w-full py-2 px-3 rounded-xl bg-white hover:bg-emerald-50 text-[#047857] border border-[#A7F3D0] text-xs font-bold flex items-center justify-center gap-1.5 transition-all"
               >
-                <Send className="w-3.5 h-3.5" />
-                {testingPush ? "Enviando..." : "Testar Alerta Push"}
+                <Settings2 className="w-3.5 h-3.5" />
+                Configurar / Testar Push
               </button>
             </div>
           ) : (
@@ -225,7 +232,8 @@ export function AppShell({
                   : "Ative para saber na hora quando cair pagamento ou frete novo."}
               </p>
               <button
-                onClick={handleBellAction}
+                type="button"
+                onClick={handlePrimaryBellClick}
                 className="w-full py-2 px-3 rounded-xl bg-[#059669] hover:bg-[#047857] text-white text-xs font-bold transition-all shadow-xs"
               >
                 {notifStatus === "ios-install"
@@ -239,7 +247,7 @@ export function AppShell({
 
       {/* Topbar — Mobile */}
       <header className="lg:hidden sticky top-0 z-30 bg-white/95 backdrop-blur-md border-b border-[#E2ECE7] pt-safe print:hidden">
-        <div className="px-4 py-3 flex items-center justify-between gap-3">
+        <div className="px-4 py-3 flex items-center justify-between gap-2">
           <Link href="/" className="flex items-center gap-2.5 min-w-0">
             <ControleFreteLogo className="w-9 h-9" />
             <div className="min-w-0">
@@ -252,35 +260,48 @@ export function AppShell({
             </div>
           </Link>
 
-          <button
-            onClick={handleBellAction}
-            disabled={testingPush}
-            className={cn(
-              "px-3 py-1.5 rounded-full text-xs font-bold flex items-center gap-1.5 border transition-all shrink-0",
-              notifStatus === "granted"
-                ? "bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]"
-                : "bg-[#059669] text-white border-[#059669] shadow-xs"
-            )}
-          >
-            {notifStatus === "granted" ? (
-              <>
-                <CheckCircle2 className="w-3.5 h-3.5" />
-                <span>{testingPush ? "Testando..." : "Alertas OK"}</span>
-              </>
-            ) : (
-              <>
-                <Bell className="w-3.5 h-3.5" />
-                <span>Ativar Alertas</span>
-              </>
-            )}
-          </button>
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              onClick={openDeviceSettings}
+              className="px-2.5 py-1.5 rounded-full text-xs font-bold bg-[#F4F8F6] text-[#1E3A2F] border border-[#DCE8E2] flex items-center gap-1"
+              title="Identificar aparelho e preferências de Push"
+            >
+              <UserCheck className="w-3.5 h-3.5 text-[#059669]" />
+              <span className="max-w-20 truncate">
+                {deviceName || "Perfil"}
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handlePrimaryBellClick}
+              className={cn(
+                "px-2.5 py-1.5 rounded-full text-xs font-bold flex items-center gap-1 border transition-all",
+                notifStatus === "granted"
+                  ? "bg-[#ECFDF5] text-[#047857] border-[#A7F3D0]"
+                  : "bg-[#059669] text-white border-[#059669] shadow-xs"
+              )}
+            >
+              {notifStatus === "granted" ? (
+                <>
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Push OK</span>
+                </>
+              ) : (
+                <>
+                  <Bell className="w-3.5 h-3.5" />
+                  <span>Alertas</span>
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
       {/* Área Principal */}
       <div className="flex-1 min-w-0 pb-24 lg:pb-10">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-5 lg:py-8">
-          {/* Cabeçalho Desktop de Página */}
           <div className="hidden lg:flex items-center justify-between mb-6 print:hidden">
             <div>
               <h1 className="text-2xl font-extrabold text-[#0F291E] tracking-tight">

@@ -38,6 +38,7 @@ export async function POST(request: NextRequest) {
       const id = await savePushSubscription({
         subscription: body.subscription,
         deviceId: body.deviceId,
+        deviceName: body.deviceName,
         platform: body.platform,
         userAgent: body.userAgent,
       });
@@ -53,9 +54,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (action === "test") {
+      const senderLabel =
+        typeof body.deviceName === "string" && body.deviceName.trim()
+          ? ` (disparado por ${body.deviceName.trim()})`
+          : "";
       const stats = await broadcastPushNotification({
         title: "Alertas Ativos • Controle de Frete 🔔",
-        body: "Perfeito! Os avisos de novos fretes e pagamentos estão funcionando em tempo real.",
+        body: `Perfeito! Os avisos de fretes, baixas e estornos estão conectados em tempo real${senderLabel}.`,
         url: "/",
         tag: `controle-frete-test-${Date.now()}`,
       });
@@ -81,6 +86,7 @@ export async function POST(request: NextRequest) {
           typeof body.senderDeviceId === "string"
             ? body.senderDeviceId
             : undefined,
+        excludeSender: Boolean(body.excludeSender),
       });
 
       return NextResponse.json({ success: true, ...stats });

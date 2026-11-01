@@ -29,14 +29,34 @@ import {
 import { toast } from "sonner";
 import {
   getDeviceId,
+  getDeviceName,
   notifyAllDevices,
   sendLocalNotification,
 } from "@/lib/pwa-notifications";
 import { formatCurrency } from "@/lib/utils";
+import {
+  computePendingSummary,
+  PendingSummary,
+} from "@/lib/ledger-calculations";
 
 export interface FreightBatchEntry {
   transportId: string;
   amount: number;
+}
+
+export interface FreightUpdateInput {
+  transportId: string;
+  amount: number;
+  createdAt: number;
+  note?: string;
+}
+
+export interface PaymentUpdateInput {
+  amount: number;
+  bank: string;
+  transportId?: string;
+  createdAt: number;
+  note?: string;
 }
 
 interface LedgerContextValue {
@@ -50,6 +70,7 @@ interface LedgerContextValue {
   totalExpenses: number;
   balance: number;
   netProfit: number;
+  pendingSummary: PendingSummary;
   loading: boolean;
   addFreight: (
     transportId: string,
@@ -64,8 +85,11 @@ interface LedgerContextValue {
     amount: number,
     note?: string,
     bank?: string,
-    dateMs?: number
+    dateMs?: number,
+    transportId?: string
   ) => Promise<boolean>;
+  updateFreight: (id: string, input: FreightUpdateInput) => Promise<boolean>;
+  updatePayment: (id: string, input: PaymentUpdateInput) => Promise<boolean>;
   addExpense: (category: string, amount: number, note?: string) => Promise<void>;
   addPickup: (
     transportId: string,
@@ -109,6 +133,8 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
   const seenFreightsRef = useRef<Set<string>>(new Set());
   const seenPaymentsRef = useRef<Set<string>>(new Set());
   const seenPickupsRef = useRef<Set<string>>(new Set());
+  const canceledFreightsRef = useRef<Set<string>>(new Set());
+  const canceledPaymentsRef = useRef<Set<string>>(new Set());
   const initialSnapshotRef = useRef({
     freights: false,
     payments: false,
@@ -155,21 +181,39 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         setLoadedFlags((prev) => ({ ...prev, freights: true }));
 
         if (!initialSnapshotRef.current.freights) {
-          snapshot.docs.forEach((d) => seenFreightsRef.current.add(d.id));
+          snapshot.docs.forEach((d) => {
+            seenFreightsRef.current.add(d.id);
+            if ((d.data() as FreightRecord).canceled) {
+              canceledFreightsRef.current.add(d.id);
+            }
+          });
           initialSnapshotRef.current.freights = true;
           return;
         }
 
         snapshot.docChanges().forEach((change) => {
-          if (change.type !== "added") return;
           const docId = change.doc.id;
-          if (seenFreightsRef.current.has(docId)) return;
-          seenFreightsRef.current.add(docId);
-
           if (change.doc.metadata.hasPendingWrites) return;
+
           const raw = change.doc.data() as FreightRecord & {
             recordedAt?: number;
+            canceledAt?: number;
+            canceledByDeviceId?: string;
           };
+
+          if (change.type === "modified" && raw.canceled && !canceledFreightsRef.current.has(docId)) {
+            canceledFreightsRef.current.add(docId);
+            if (raw.canceledByDeviceId && raw.canceledByDeviceId === myDeviceId) return;
+            const t = transportersRef.current.find((item) => item.id === raw.transportId);
+            toast.info("Frete Estornado ↩️", {
+              description: `${t?.name || "Transportadora"}: ${formatCurrency(raw.amount / 100)} foi removido.`,
+            });
+            return;
+          }
+
+          if (change.type !== "added") return;
+          if (seenFreightsRef.current.has(docId)) return;
+          seenFreightsRef.current.add(docId);
           if (raw.canceled) return;
           if (raw.deviceId && raw.deviceId === myDeviceId) return;
 
@@ -180,16 +224,19 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
             (item) => item.id === raw.transportId
           );
           const tName = t?.name || "Transportadora";
-          const msg = `${tName}: ${formatCurrency(raw.amount / 100)} lançado na caderneta.`;
+          const byText = raw.authorName ? ` (por ${raw.authorName})` : "";
+          const msg = `${tName}: ${formatCurrency(raw.amount / 100)} lançado na caderneta${byText}.`;
 
-          toast.success("Novo Frete Lançado! 🚚", { description: msg });
+          toast.success(`🚚 +${formatCurrency(raw.amount / 100)} • ${tName}`, {
+            description: msg,
+          });
 
           if (
             typeof document !== "undefined" &&
             document.visibilityState !== "visible"
           ) {
-            sendLocalNotification(
-              "Novo Frete Lançado! 🚚",
+            void sendLocalNotification(
+              `🚚 +${formatCurrency(raw.amount / 100)} • ${tName}`,
               msg,
               "/",
               `freight-${docId}`
@@ -217,36 +264,55 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         setLoadedFlags((prev) => ({ ...prev, payments: true }));
 
         if (!initialSnapshotRef.current.payments) {
-          snapshot.docs.forEach((d) => seenPaymentsRef.current.add(d.id));
+          snapshot.docs.forEach((d) => {
+            seenPaymentsRef.current.add(d.id);
+            if ((d.data() as PaymentRecord).canceled) {
+              canceledPaymentsRef.current.add(d.id);
+            }
+          });
           initialSnapshotRef.current.payments = true;
           return;
         }
 
         snapshot.docChanges().forEach((change) => {
-          if (change.type !== "added") return;
           const docId = change.doc.id;
-          if (seenPaymentsRef.current.has(docId)) return;
-          seenPaymentsRef.current.add(docId);
-
           if (change.doc.metadata.hasPendingWrites) return;
+
           const raw = change.doc.data() as PaymentRecord & {
             recordedAt?: number;
+            canceledByDeviceId?: string;
           };
+
+          if (change.type === "modified" && raw.canceled && !canceledPaymentsRef.current.has(docId)) {
+            canceledPaymentsRef.current.add(docId);
+            if (raw.canceledByDeviceId && raw.canceledByDeviceId === myDeviceId) return;
+            toast.info("Pagamento Estornado ↩️", {
+              description: `Recebimento de ${formatCurrency(raw.amount / 100)} foi estornado.`,
+            });
+            return;
+          }
+
+          if (change.type !== "added") return;
+          if (seenPaymentsRef.current.has(docId)) return;
+          seenPaymentsRef.current.add(docId);
           if (raw.canceled) return;
           if (raw.deviceId && raw.deviceId === myDeviceId) return;
 
           const eventTimestamp = raw.recordedAt || raw.createdAt || 0;
           if (eventTimestamp < mountedAtRef.current - 20000) return;
 
-          const msg = `Pagamento de ${formatCurrency(raw.amount / 100)} confirmado${raw.bank ? ` (${raw.bank})` : ""}.`;
-          toast.success("Pagamento Pago! 💰", { description: msg });
+          const byText = raw.authorName ? ` • por ${raw.authorName}` : "";
+          const msg = `Pagamento de ${formatCurrency(raw.amount / 100)} confirmado${raw.bank ? ` (${raw.bank})` : ""}${byText}.`;
+          toast.success(`💰 Pago ${formatCurrency(raw.amount / 100)}`, {
+            description: msg,
+          });
 
           if (
             typeof document !== "undefined" &&
             document.visibilityState !== "visible"
           ) {
-            sendLocalNotification(
-              "Pagamento Pago! 💰",
+            void sendLocalNotification(
+              `💰 Pago ${formatCurrency(raw.amount / 100)}${raw.bank ? ` • ${raw.bank}` : ""}`,
               msg,
               "/",
               `payment-${docId}`
@@ -355,6 +421,11 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     };
   }, [freights, payments, expenses]);
 
+  const pendingSummary = useMemo(
+    () => computePendingSummary(freights, payments, transporters),
+    [freights, payments, transporters]
+  );
+
   const addFreight = async (
     transportId: string,
     amount: number,
@@ -374,6 +445,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
       const now = Date.now();
       const targetDate = customDateMs || now;
       const deviceId = getDeviceId();
+      const authorName = getDeviceName();
       const createdIds: string[] = [];
 
       for (const entry of validEntries) {
@@ -384,22 +456,28 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
           recordedAt: Date.now(),
           canceled: false,
           deviceId,
+          authorName: authorName || "",
         });
         seenFreightsRef.current.add(docRef.id);
         createdIds.push(docRef.id);
       }
 
+      const totalBatch = validEntries.reduce((acc, e) => acc + e.amount, 0);
+      const newBalance = Math.max(0, totals.balance + totalBatch);
+      const authorPrefix = authorName ? `Por ${authorName} • ` : "";
+
       if (validEntries.length === 1) {
         const single = validEntries[0];
         const transport = transporters.find((t) => t.id === single.transportId);
         const name = transport?.name || "Transportadora";
-        const message = `${name}: ${formatCurrency(single.amount / 100)} adicionado na caderneta.`;
+        const title = `🚚 +${formatCurrency(single.amount / 100)} • ${name}`;
+        const body = `${authorPrefix}Saldo a receber: ${formatCurrency(newBalance / 100)}`;
 
-        toast.success("Novo Frete Lançado! 🚚", { description: message });
+        toast.success(title, { description: body });
 
         void notifyAllDevices({
-          title: "Novo Frete Lançado! 🚚",
-          body: message,
+          title,
+          body,
           url: "/",
           tag: `freight-${createdIds[0]}`,
         });
@@ -408,16 +486,14 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
           const t = transporters.find((item) => item.id === e.transportId);
           return `${t?.name || "Frete"}: ${formatCurrency(e.amount / 100)}`;
         });
-        const totalBatch = validEntries.reduce((acc, e) => acc + e.amount, 0);
-        const message = `${summaryParts.join(" • ")} (Total: ${formatCurrency(totalBatch / 100)})`;
+        const title = `🚚 +${formatCurrency(totalBatch / 100)} (${validEntries.length} fretes)`;
+        const body = `${summaryParts.join(" • ")} • ${authorPrefix}Saldo: ${formatCurrency(newBalance / 100)}`;
 
-        toast.success(`${validEntries.length} Fretes Lançados! 🚚`, {
-          description: message,
-        });
+        toast.success(title, { description: body });
 
         void notifyAllDevices({
-          title: `${validEntries.length} Novos Fretes Lançados! 🚚`,
-          body: message,
+          title,
+          body,
           url: "/",
           tag: `freight-batch-${createdIds[0]}`,
         });
@@ -434,30 +510,42 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     amount: number,
     note?: string,
     bank?: string,
-    dateMs?: number
+    dateMs?: number,
+    transportId?: string
   ): Promise<boolean> => {
     try {
       const remainingAfter = Math.max(0, totals.balance - amount);
+      const authorName = getDeviceName();
       const docRef = await addDoc(collection(db, "pagamentos"), {
         amount,
         createdAt: dateMs || Date.now(),
         recordedAt: Date.now(),
         note: note || "",
         bank: bank || "",
+        transportId: transportId || "",
         canceled: false,
         deviceId: getDeviceId(),
+        authorName: authorName || "",
       });
       seenPaymentsRef.current.add(docRef.id);
 
-      const message = `Pagamento de ${formatCurrency(amount / 100)} pago${bank ? ` via ${bank}` : ""}. Saldo restante: ${formatCurrency(remainingAfter / 100)}.`;
+      const linkedTransporter = transportId
+        ? transporters.find((t) => t.id === transportId)
+        : undefined;
+      const parts = [
+        linkedTransporter ? linkedTransporter.name : "",
+        authorName ? `Por ${authorName}` : "",
+        `Saldo restante: ${formatCurrency(remainingAfter / 100)}`,
+      ].filter(Boolean);
 
-      toast.success("Pagamento Pago! 💰", {
-        description: message,
-      });
+      const title = `💰 Pago ${formatCurrency(amount / 100)}${bank ? ` • ${bank}` : ""}`;
+      const body = parts.join(" • ");
+
+      toast.success(title, { description: body });
 
       void notifyAllDevices({
-        title: "Pagamento Pago! 💰",
-        body: message,
+        title,
+        body,
         url: "/",
         tag: `payment-${docRef.id}`,
       });
@@ -470,8 +558,86 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     }
   };
 
+  const updateFreight = async (
+    id: string,
+    input: FreightUpdateInput
+  ): Promise<boolean> => {
+    try {
+      const prev = freights.find((f) => f.id === id);
+      const delta = input.amount - (prev?.amount || 0);
+      const newBalance = Math.max(0, totals.balance + delta);
+      const authorName = getDeviceName();
+
+      await updateDoc(doc(db, "fretes", id), {
+        transportId: input.transportId,
+        amount: input.amount,
+        createdAt: input.createdAt,
+        note: input.note || "",
+        updatedAt: Date.now(),
+      });
+
+      const t = transporters.find((item) => item.id === input.transportId);
+      const tName = t?.name || "Transportadora";
+      const title = `✏️ Frete Editado • ${tName}`;
+      const body = `${authorName ? `Por ${authorName} • ` : ""}Valor: ${formatCurrency(input.amount / 100)} • Saldo: ${formatCurrency(newBalance / 100)}`;
+
+      toast.success("Frete atualizado!", { description: body });
+
+      void notifyAllDevices({
+        title,
+        body,
+        url: "/",
+        tag: `freight-edit-${id}-${Date.now()}`,
+      });
+
+      return true;
+    } catch {
+      toast.error("Erro ao editar frete.");
+      return false;
+    }
+  };
+
+  const updatePayment = async (
+    id: string,
+    input: PaymentUpdateInput
+  ): Promise<boolean> => {
+    try {
+      const prev = payments.find((p) => p.id === id);
+      const delta = input.amount - (prev?.amount || 0);
+      const newBalance = Math.max(0, totals.balance - delta);
+      const authorName = getDeviceName();
+
+      await updateDoc(doc(db, "pagamentos", id), {
+        amount: input.amount,
+        bank: input.bank,
+        transportId: input.transportId || "",
+        createdAt: input.createdAt,
+        note: input.note || "",
+        updatedAt: Date.now(),
+      });
+
+      const title = `✏️ Pagamento Editado • ${formatCurrency(input.amount / 100)}`;
+      const body = `${input.bank}${authorName ? ` • Por ${authorName}` : ""} • Saldo: ${formatCurrency(newBalance / 100)}`;
+
+      toast.success("Pagamento atualizado!", { description: body });
+
+      void notifyAllDevices({
+        title,
+        body,
+        url: "/",
+        tag: `payment-edit-${id}-${Date.now()}`,
+      });
+
+      return true;
+    } catch {
+      toast.error("Erro ao editar pagamento.");
+      return false;
+    }
+  };
+
   const addExpense = async (category: string, amount: number, note?: string) => {
     try {
+      const authorName = getDeviceName();
       const docRef = await addDoc(collection(db, "despesas"), {
         category,
         amount,
@@ -480,13 +646,14 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         recordedAt: Date.now(),
         canceled: false,
         deviceId: getDeviceId(),
+        authorName: authorName || "",
       });
 
-      const message = `Despesa de ${formatCurrency(amount / 100)} em "${category}".`;
+      const message = `Despesa de ${formatCurrency(amount / 100)} em "${category}"${authorName ? ` (por ${authorName})` : ""}.`;
       toast.success("Despesa Registrada", { description: message });
 
       void notifyAllDevices({
-        title: "Nova Despesa Registrada",
+        title: `🧾 Despesa • ${formatCurrency(amount / 100)}`,
         body: message,
         url: "/admin",
         tag: `expense-${docRef.id}`,
@@ -502,6 +669,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     note?: string
   ): Promise<boolean> => {
     try {
+      const authorName = getDeviceName();
       const docRef = await addDoc(collection(db, "coletas"), {
         transportId,
         scheduledAt,
@@ -510,6 +678,7 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         canceled: false,
         createdAt: Date.now(),
         deviceId: getDeviceId(),
+        authorName: authorName || "",
       });
       seenPickupsRef.current.add(docRef.id);
 
@@ -521,12 +690,12 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         hour: "2-digit",
         minute: "2-digit",
       });
-      const message = `${name} agendada para ${formattedDate}${note ? ` • ${note}` : ""}.`;
+      const message = `${name} para ${formattedDate}${note ? ` • ${note}` : ""}${authorName ? ` (por ${authorName})` : ""}.`;
 
       toast.success("Coleta Agendada! 📅", { description: message });
 
       void notifyAllDevices({
-        title: "Nova Coleta Agendada! 📅",
+        title: `📅 Coleta • ${name}`,
         body: message,
         url: "/agenda",
         tag: `pickup-${docRef.id}`,
@@ -583,7 +752,58 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
         expense: "despesas",
         pickup: "coletas",
       } as const;
-      await updateDoc(doc(db, map[type], id), { canceled: true });
+
+      const authorName = getDeviceName();
+      const myDeviceId = getDeviceId();
+
+      if (type === "freight") {
+        canceledFreightsRef.current.add(id);
+      } else if (type === "payment") {
+        canceledPaymentsRef.current.add(id);
+      }
+
+      await updateDoc(doc(db, map[type], id), {
+        canceled: true,
+        canceledAt: Date.now(),
+        canceledByDeviceId: myDeviceId,
+        canceledByName: authorName || "",
+      });
+
+      if (type === "freight") {
+        const target = freights.find((f) => f.id === id);
+        if (target) {
+          const t = transporters.find((item) => item.id === target.transportId);
+          const newBalance = Math.max(0, totals.balance - target.amount);
+          const title = `↩️ Frete Estornado • -${formatCurrency(target.amount / 100)}`;
+          const body = `${t?.name || "Transportadora"}${authorName ? ` • Por ${authorName}` : ""} • Novo saldo: ${formatCurrency(newBalance / 100)}`;
+          toast.success("Frete removido!", { description: body });
+          void notifyAllDevices({
+            title,
+            body,
+            url: "/",
+            tag: `freight-cancel-${id}`,
+          });
+          return;
+        }
+      }
+
+      if (type === "payment") {
+        const target = payments.find((p) => p.id === id);
+        if (target) {
+          const newBalance = Math.max(0, totals.balance + target.amount);
+          const title = `↩️ Pagamento Estornado • ${formatCurrency(target.amount / 100)}`;
+          const body = `${target.bank || "Recebimento"}${authorName ? ` • Por ${authorName}` : ""} • Saldo voltou para: ${formatCurrency(newBalance / 100)}`;
+          toast.success("Pagamento estornado!", { description: body });
+          void notifyAllDevices({
+            title,
+            body,
+            url: "/",
+            tag: `payment-cancel-${id}`,
+          });
+          return;
+        }
+      }
+
       toast.success("Registro removido!");
     } catch {
       toast.error("Erro ao remover registro.");
@@ -597,10 +817,13 @@ export function LedgerProvider({ children }: { children: React.ReactNode }) {
     expenses,
     pickups: pickups.filter((p) => !p.canceled),
     ...totals,
+    pendingSummary,
     loading,
     addFreight,
     addFreightsBatch,
     addPayment,
+    updateFreight,
+    updatePayment,
     addExpense,
     addPickup,
     togglePickupCompleted,

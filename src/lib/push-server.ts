@@ -124,6 +124,7 @@ export async function getOrCreateVapidKeys(): Promise<VapidKeyPair> {
 export async function savePushSubscription(params: {
   subscription: WebPushSubscription;
   deviceId?: string;
+  deviceName?: string;
   platform?: string;
   userAgent?: string;
 }): Promise<string> {
@@ -137,6 +138,7 @@ export async function savePushSubscription(params: {
         p256dh: { stringValue: params.subscription.keys.p256dh },
         auth: { stringValue: params.subscription.keys.auth },
         deviceId: { stringValue: params.deviceId || "" },
+        deviceName: { stringValue: params.deviceName || "" },
         platform: { stringValue: params.platform || "web" },
         userAgent: { stringValue: params.userAgent || "" },
         updatedAt: { integerValue: String(Date.now()) },
@@ -171,6 +173,8 @@ interface FirestoreSubDocument {
     endpoint?: { stringValue?: string };
     p256dh?: { stringValue?: string };
     auth?: { stringValue?: string };
+    deviceId?: { stringValue?: string };
+    deviceName?: { stringValue?: string };
     keys?: {
       mapValue?: {
         fields?: {
@@ -184,7 +188,13 @@ interface FirestoreSubDocument {
 
 export async function broadcastPushNotification(
   payload: PushNotificationPayload
-): Promise<{ sent: number; failed: number; cleaned: number; total: number }> {
+): Promise<{
+  sent: number;
+  failed: number;
+  cleaned: number;
+  skippedSender: number;
+  total: number;
+}> {
   const vapid = await getOrCreateVapidKeys();
   webpush.setVapidDetails(vapid.subject, vapid.publicKey, vapid.privateKey);
 
@@ -195,7 +205,7 @@ export async function broadcastPushNotification(
 
   if (!listRes.ok) {
     if (listRes.status === 404) {
-      return { sent: 0, failed: 0, cleaned: 0, total: 0 };
+      return { sent: 0, failed: 0, cleaned: 0, skippedSender: 0, total: 0 };
     }
     const errText = await listRes.text().catch(() => "");
     throw new Error(
@@ -208,7 +218,7 @@ export async function broadcastPushNotification(
   };
   const docs = listJson.documents || [];
   if (docs.length === 0) {
-    return { sent: 0, failed: 0, cleaned: 0, total: 0 };
+    return { sent: 0, failed: 0, cleaned: 0, skippedSender: 0, total: 0 };
   }
 
   const messageString = JSON.stringify({
@@ -225,10 +235,23 @@ export async function broadcastPushNotification(
   let sent = 0;
   let failed = 0;
   let cleaned = 0;
+  let skippedSender = 0;
 
   await Promise.all(
     docs.map(async (docItem) => {
       const docId = docItem.name.split("/").pop() || "";
+      const subDeviceId = docItem.fields?.deviceId?.stringValue || "";
+
+      if (
+        payload.excludeSender &&
+        payload.senderDeviceId &&
+        subDeviceId &&
+        subDeviceId === payload.senderDeviceId
+      ) {
+        skippedSender++;
+        return;
+      }
+
       const endpoint = docItem.fields?.endpoint?.stringValue || "";
       const p256dh =
         docItem.fields?.p256dh?.stringValue ||
@@ -275,5 +298,5 @@ export async function broadcastPushNotification(
     })
   );
 
-  return { sent, failed, cleaned, total: docs.length };
+  return { sent, failed, cleaned, skippedSender, total: docs.length };
 }

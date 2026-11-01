@@ -6,34 +6,58 @@ import {
   Bell,
   CheckCircle2,
   PlusSquare,
+  Send,
   Share,
   Smartphone,
   Sparkles,
+  UserCheck,
+  VolumeX,
   X,
 } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   canUseNotifications,
+  clearAppUnreadBadge,
+  getDeviceName,
   getIOSVersion,
+  getMuteOwnPush,
   getNotificationPermissionState,
   isIOS,
   isStandalone,
   registerServiceWorker,
   requestNotificationPermission,
   sendTestPushNotification,
+  setDeviceName,
+  setMuteOwnPush,
   syncPushSubscription,
 } from "@/lib/pwa-notifications";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
+
+const QUICK_NAMES = ["Ana", "Marlon", "Motorista"];
 
 export function PwaNotificationManager() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [showIOSInstallGuide, setShowIOSInstallGuide] = useState(false);
   const [showIOSIncompatible, setShowIOSIncompatible] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [permissionState, setPermissionState] = useState<string>("default");
   const [busy, setBusy] = useState(false);
 
+  const [nameInput, setNameInput] = useState(() => getDeviceName());
+  const [muteSelf, setMuteSelfState] = useState(() => getMuteOwnPush());
+
   useEffect(() => {
     void registerServiceWorker();
+    void clearAppUnreadBadge();
+
+    const handleVisibilityOrFocus = () => {
+      if (document.visibilityState === "visible") {
+        void clearAppUnreadBadge();
+      }
+    };
+    window.addEventListener("focus", handleVisibilityOrFocus);
+    document.addEventListener("visibilitychange", handleVisibilityOrFocus);
 
     const init = async () => {
       const iosDevice = isIOS();
@@ -68,7 +92,6 @@ export function PwaNotificationManager() {
         setPermissionState(state);
 
         if (state === "granted") {
-          // Crucial: ensure existing permitted devices register/refresh their Web Push endpoint!
           await syncPushSubscription();
         } else if (state === "default" && dismissedNotif !== "true") {
           setTimeout(() => setShowPrompt(true), 1500);
@@ -79,6 +102,9 @@ export function PwaNotificationManager() {
     void init();
 
     const handleOpenDialog = async () => {
+      setNameInput(getDeviceName());
+      setMuteSelfState(getMuteOwnPush());
+
       if (isIOS() && !isStandalone()) {
         setShowIOSInstallGuide(true);
         return;
@@ -92,24 +118,13 @@ export function PwaNotificationManager() {
       }
       const state = await getNotificationPermissionState();
       setPermissionState(state);
-
-      if (state === "granted") {
-        toast.info("Enviando notificação de teste...");
-        const ok = await sendTestPushNotification();
-        if (ok) {
-          toast.success("Notificação de teste enviada!");
-        }
-      } else if (state === "denied") {
-        toast.error(
-          "As notificações estão bloqueadas nas configurações do navegador/aparelho. Libere nas configurações do site para receber alertas."
-        );
-      } else {
-        setShowPrompt(true);
-      }
+      setShowSettingsModal(true);
     };
 
     window.addEventListener("freteana:open-notif-settings", handleOpenDialog);
     return () => {
+      window.removeEventListener("focus", handleVisibilityOrFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
       window.removeEventListener(
         "freteana:open-notif-settings",
         handleOpenDialog
@@ -126,7 +141,28 @@ export function PwaNotificationManager() {
       if (result === "granted") {
         toast.success("Alertas ativados com sucesso!");
       } else if (result === "denied") {
-        toast.error("Permissão negada no navegador.");
+        toast.error("Permissão negada nas configurações do navegador.");
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const handleSaveSettings = () => {
+    setDeviceName(nameInput);
+    setMuteOwnPush(muteSelf);
+    toast.success("Preferências deste aparelho salvas!");
+    setShowSettingsModal(false);
+  };
+
+  const handleSendTest = async () => {
+    setBusy(true);
+    try {
+      setDeviceName(nameInput);
+      setMuteOwnPush(muteSelf);
+      const ok = await sendTestPushNotification();
+      if (ok) {
+        toast.success("Notificação de teste disparada!");
       }
     } finally {
       setBusy(false);
@@ -150,7 +186,175 @@ export function PwaNotificationManager() {
 
   return (
     <AnimatePresence>
-      {/* 1. Guia de Instalação iOS (Clean Esmeralda & Gelo) */}
+      {/* Modal de Identificação do Aparelho & Preferências de Push */}
+      {showSettingsModal && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setShowSettingsModal(false)}
+            className="fixed inset-0 bg-[#0F291E]/25 backdrop-blur-xs"
+          />
+
+          <motion.div
+            initial={{ opacity: 0, y: 32, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 32, scale: 0.98 }}
+            className="relative z-10 w-full sm:max-w-md bg-white border border-[#DCE8E2] rounded-t-3xl sm:rounded-3xl p-6 shadow-2xl space-y-5"
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <span className="text-xs font-bold text-[#059669] bg-[#ECFDF5] px-2.5 py-1 rounded-full">
+                  Aparelho &amp; Notificações
+                </span>
+                <h2 className="text-lg font-extrabold text-[#0F291E] mt-2">
+                  Identificação e Alertas Push
+                </h2>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSettingsModal(false)}
+                className="p-2 rounded-full text-[#648274] hover:bg-[#F4F8F6] hover:text-[#0F291E]"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Nome de quem usa este aparelho */}
+            <div className="space-y-2">
+              <label className="flex items-center gap-1.5 text-xs font-bold text-[#1E3A2F]">
+                <UserCheck className="w-4 h-4 text-[#059669]" />
+                <span>Quem usa este aparelho?</span>
+              </label>
+              <input
+                type="text"
+                value={nameInput}
+                onChange={(e) => setNameInput(e.target.value)}
+                placeholder="Ex: Ana, Marlon..."
+                className="w-full bg-[#F4F8F6] border border-[#DCE8E2] rounded-xl px-3.5 py-2.5 text-sm font-semibold text-[#0F291E] placeholder:text-[#86A395] focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+              />
+              <div className="flex flex-wrap gap-1.5">
+                {QUICK_NAMES.map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setNameInput(preset)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-lg text-xs font-bold border transition-all",
+                      nameInput.trim().toLowerCase() === preset.toLowerCase()
+                        ? "bg-[#ECFDF5] border-[#10B981] text-[#047857]"
+                        : "bg-white border-[#DCE8E2] text-[#526D60] hover:bg-[#F4F8F6]"
+                    )}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+              <p className="text-xs text-[#648274]">
+                Esse nome aparece nas notificações enviadas aos outros celulares (ex.:{" "}
+                <em>&ldquo;Por Ana • Saldo a receber...&rdquo;</em>).
+              </p>
+            </div>
+
+            {/* Silenciar auto-notificação */}
+            <button
+              type="button"
+              onClick={() => setMuteSelfState((v) => !v)}
+              className={cn(
+                "w-full p-3.5 rounded-2xl border text-left flex items-center justify-between gap-3 transition-all",
+                muteSelf
+                  ? "bg-[#ECFDF5] border-[#10B981]"
+                  : "bg-[#F4F8F6] border-[#DCE8E2]"
+              )}
+            >
+              <div className="flex items-center gap-3 min-w-0">
+                <div
+                  className={cn(
+                    "w-9 h-9 rounded-xl flex items-center justify-center shrink-0",
+                    muteSelf
+                      ? "bg-[#059669] text-white"
+                      : "bg-white text-[#648274] border border-[#DCE8E2]"
+                  )}
+                >
+                  <VolumeX className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-xs font-extrabold text-[#0F291E]">
+                    Não tocar Push quando eu mesmo lançar
+                  </div>
+                  <div className="text-xs text-[#648274] leading-snug">
+                    {muteSelf
+                      ? "Ativo: apenas os outros celulares recebem o Push."
+                      : "Desativado: todos os celulares (incluindo este) recebem o Push."}
+                  </div>
+                </div>
+              </div>
+
+              <div
+                className={cn(
+                  "w-11 h-6 rounded-full p-0.5 transition-colors shrink-0",
+                  muteSelf ? "bg-[#059669]" : "bg-[#CBDAD2]"
+                )}
+              >
+                <div
+                  className={cn(
+                    "w-5 h-5 rounded-full bg-white shadow-xs transition-transform",
+                    muteSelf ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </div>
+            </button>
+
+            {/* Status / Teste de Push */}
+            <div className="rounded-2xl p-3.5 bg-[#F4F8F6] border border-[#DCE8E2] flex items-center justify-between gap-3">
+              <div>
+                <div className="text-xs font-extrabold text-[#0F291E]">
+                  Status do Push neste aparelho
+                </div>
+                <div className="text-xs text-[#526D60]">
+                  {permissionState === "granted"
+                    ? "Conectado e recebendo alertas"
+                    : permissionState === "denied"
+                      ? "Bloqueado nos ajustes do navegador"
+                      : "Aguardando ativação"}
+                </div>
+              </div>
+
+              {permissionState === "granted" ? (
+                <button
+                  type="button"
+                  onClick={handleSendTest}
+                  disabled={busy}
+                  className="px-3 py-2 rounded-xl bg-white hover:bg-[#ECFDF5] border border-[#A7F3D0] text-[#047857] text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>{busy ? "Enviando..." : "Testar Push"}</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleEnableNotifications}
+                  disabled={busy}
+                  className="px-3 py-2 rounded-xl bg-[#059669] hover:bg-[#047857] text-white text-xs font-bold shrink-0 transition-all"
+                >
+                  {busy ? "Ativando..." : "Ativar Agora"}
+                </button>
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleSaveSettings}
+              className="w-full h-12 rounded-2xl bg-[#059669] hover:bg-[#047857] text-white font-bold text-sm shadow-xs transition-all"
+            >
+              Salvar Preferências
+            </button>
+          </motion.div>
+        </div>
+      )}
+
+      {/* 1. Guia de Instalação iOS */}
       {showIOSInstallGuide && (
         <motion.div
           initial={{ opacity: 0, y: 30, scale: 0.97 }}
@@ -263,6 +467,7 @@ export function PwaNotificationManager() {
       {/* 3. Convite Limpo de Ativação de Alertas Push */}
       {!showIOSInstallGuide &&
         !showIOSIncompatible &&
+        !showSettingsModal &&
         showPrompt &&
         permissionState === "default" && (
           <motion.div
@@ -296,7 +501,7 @@ export function PwaNotificationManager() {
               </div>
 
               <p className="text-xs text-[#526D60] mt-3 leading-relaxed">
-                Receba uma notificação no celular sempre que um novo frete for lançado ou um pagamento for confirmado!
+                Receba uma notificação no celular sempre que um novo frete for lançado, pago ou estornado!
               </p>
 
               <div className="mt-4 flex gap-2.5">

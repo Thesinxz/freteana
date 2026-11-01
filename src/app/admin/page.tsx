@@ -19,6 +19,7 @@ import {
   CheckCircle2,
   FileDown,
   Landmark,
+  Pencil,
   Plus,
   Receipt,
   Share2,
@@ -40,6 +41,10 @@ import {
 import { useLedger } from "@/hooks/useLedger";
 import { AppShell } from "@/components/AppShell";
 import { BankIcon } from "@/components/BrandLogos";
+import {
+  EditableRecordTarget,
+  EditRecordModal,
+} from "@/components/EditRecordModal";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
   AVAILABLE_TRANSPORTER_COLORS,
@@ -80,6 +85,9 @@ export default function AdminDashboard() {
 
   const [activeTab, setActiveTab] = useState<Tab>("extrato");
   const [profitGoal, setProfitGoal] = useState(5000);
+  const [editTarget, setEditTarget] = useState<EditableRecordTarget | null>(
+    null
+  );
 
   const [dateRange, setDateRange] = useState({
     start: startOfMonth(new Date()),
@@ -524,19 +532,54 @@ export default function AdminDashboard() {
                           </td>
                           <td className="p-3.5 text-center">
                             {!item.canceled && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  if (
-                                    confirm("Deseja remover este registro?")
-                                  ) {
-                                    void cancelRecord(item.type, item.id);
-                                  }
-                                }}
-                                className="p-1.5 rounded-lg text-[#86A395] hover:text-rose-600 hover:bg-rose-50"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              <div className="inline-flex items-center gap-1">
+                                {(isFreight || isPayment) && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditTarget(
+                                        isFreight
+                                          ? {
+                                              type: "freight",
+                                              id: item.id,
+                                              transportId:
+                                                item.transportId || "",
+                                              amount: item.amount,
+                                              createdAt: item.createdAt,
+                                              note: item.note,
+                                            }
+                                          : {
+                                              type: "payment",
+                                              id: item.id,
+                                              amount: item.amount,
+                                              bank: item.bank,
+                                              transportId: item.transportId,
+                                              createdAt: item.createdAt,
+                                              note: item.note,
+                                            }
+                                      )
+                                    }
+                                    className="p-1.5 rounded-lg text-[#86A395] hover:text-[#047857] hover:bg-[#ECFDF5]"
+                                    title="Editar lançamento"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
+                                )}
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (
+                                      confirm("Deseja remover este registro?")
+                                    ) {
+                                      void cancelRecord(item.type, item.id);
+                                    }
+                                  }}
+                                  className="p-1.5 rounded-lg text-[#86A395] hover:text-rose-600 hover:bg-rose-50"
+                                  title="Estornar lançamento"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
                             )}
                           </td>
                         </tr>
@@ -924,6 +967,11 @@ export default function AdminDashboard() {
           </div>
         )}
       </div>
+
+      <EditRecordModal
+        target={editTarget}
+        onClose={() => setEditTarget(null)}
+      />
     </AppShell>
   );
 }

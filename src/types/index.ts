@@ -26,6 +26,7 @@ export interface FreightRecord {
   note?: string;
   canceled?: boolean;
   deviceId?: string;
+  authorName?: string;
 }
 
 export interface PaymentRecord {
@@ -34,8 +35,10 @@ export interface PaymentRecord {
   createdAt: number;
   note?: string;
   bank?: string;
+  transportId?: string;
   canceled?: boolean;
   deviceId?: string;
+  authorName?: string;
 }
 
 export interface ExpenseRecord {
@@ -46,6 +49,7 @@ export interface ExpenseRecord {
   note?: string;
   canceled?: boolean;
   deviceId?: string;
+  authorName?: string;
 }
 
 export interface PickupRecord {
@@ -57,6 +61,7 @@ export interface PickupRecord {
   canceled?: boolean;
   createdAt: number;
   deviceId?: string;
+  authorName?: string;
 }
 
 export interface PushNotificationPayload {
@@ -65,4 +70,5 @@ export interface PushNotificationPayload {
   url?: string;
   tag?: string;
   senderDeviceId?: string;
+  excludeSender?: boolean;
 }

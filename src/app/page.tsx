@@ -1,18 +1,18 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import Link from "next/link";
 import { format, isSameDay, parseISO, startOfMonth } from "date-fns";
 import { ptBR } from "date-fns/locale";
 import {
   Calendar as CalendarIcon,
+  Pencil,
   Plus,
   Save,
   Share2,
   Trash2,
 } from "lucide-react";
 import confetti from "canvas-confetti";
-import { toast } from "sonner";
 import { useLedger } from "@/hooks/useLedger";
 import { AppShell } from "@/components/AppShell";
 import { BalanceCard } from "@/components/BalanceCard";
@@ -21,6 +21,11 @@ import { TransportCard } from "@/components/TransportCard";
 import { PixCards } from "@/components/PixCards";
 import { SwipeableItem } from "@/components/SwipeableItem";
 import { QuickPaymentModal } from "@/components/QuickPaymentModal";
+import { ShareReceiptModal } from "@/components/ShareReceiptModal";
+import {
+  EditableRecordTarget,
+  EditRecordModal,
+} from "@/components/EditRecordModal";
 import { cn, formatCurrency } from "@/lib/utils";
 import {
   resolveTransporterIcon,
@@ -37,6 +42,7 @@ export default function DashboardPage() {
     totalPayments,
     balance,
     netProfit,
+    pendingSummary,
     transporters,
     loading,
     addFreightsBatch,
@@ -45,7 +51,17 @@ export default function DashboardPage() {
 
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
+
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [paymentTransportId, setPaymentTransportId] = useState("");
+
+  const [receiptModalOpen, setReceiptModalOpen] = useState(false);
+  const [receiptTransportId, setReceiptTransportId] = useState("");
+
+  const [editTarget, setEditTarget] = useState<EditableRecordTarget | null>(
+    null
+  );
+
   const [historyFilter, setHistoryFilter] = useState<HistoryFilter>("all");
   const [selectedDateStr, setSelectedDateStr] = useState(
     format(new Date(), "yyyy-MM-dd")
@@ -79,6 +95,16 @@ export default function DashboardPage() {
 
   const handleDraftChange = (id: string, value: string) => {
     setDrafts((prev) => ({ ...prev, [id]: value }));
+  };
+
+  const handleOpenPayment = (transportId?: string) => {
+    setPaymentTransportId(transportId || "");
+    setPaymentModalOpen(true);
+  };
+
+  const handleOpenReceipt = (transportId?: string) => {
+    setReceiptTransportId(transportId || "");
+    setReceiptModalOpen(true);
   };
 
   const handleSaveAll = async () => {
@@ -119,6 +145,7 @@ export default function DashboardPage() {
     transportId?: string;
     bank?: string;
     note?: string;
+    authorName?: string;
   };
 
   const timelineItems = useMemo<TimelineItem[]>(() => {
@@ -208,66 +235,6 @@ export default function DashboardPage() {
     window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
   };
 
-  const handleShareUnpaid = () => {
-    const activeFreights = [...freights]
-      .filter((f) => !f.canceled)
-      .sort((a, b) => a.createdAt - b.createdAt);
-
-    const activePayments = payments.filter((p) => !p.canceled);
-    let totalPaid = activePayments.reduce((acc, p) => acc + p.amount, 0);
-
-    const unpaidFreights: {
-      transportName: string;
-      date: number;
-      amount: number;
-    }[] = [];
-
-    activeFreights.forEach((freight) => {
-      const transport = transporters.find((t) => t.id === freight.transportId);
-      const transportName = transport ? transport.name : "Transportadora";
-
-      if (totalPaid >= freight.amount) {
-        totalPaid -= freight.amount;
-      } else if (totalPaid > 0) {
-        const unpaidAmount = freight.amount - totalPaid;
-        totalPaid = 0;
-        unpaidFreights.push({
-          transportName,
-          date: freight.createdAt,
-          amount: unpaidAmount,
-        });
-      } else {
-        unpaidFreights.push({
-          transportName,
-          date: freight.createdAt,
-          amount: freight.amount,
-        });
-      }
-    });
-
-    if (unpaidFreights.length === 0) {
-      toast.success("Tudo em dia! Nenhum frete pendente de pagamento.");
-      return;
-    }
-
-    const dateFormatted = format(new Date(), "dd/MM/yyyy");
-    let message = `*Resumo de Fretes Pendentes — ${dateFormatted}*\n\n`;
-    let totalPending = 0;
-
-    unpaidFreights.forEach((f) => {
-      const dStr = format(new Date(f.date), "dd/MM/yyyy");
-      message += `• *${f.transportName}* (${dStr}): ${formatCurrency(f.amount / 100)}\n`;
-      totalPending += f.amount;
-    });
-
-    message += `\n*Total Pendente a Receber: ${formatCurrency(totalPending / 100)}*`;
-    message += `\n\n*Chaves para Pagamento PIX:*\n`;
-    message += `• Nubank (CPF): \`000.820.251-69\`\n`;
-    message += `• Caixa (Telefone): \`67 98419-9182\``;
-
-    window.open(`https://wa.me/?text=${encodeURIComponent(message)}`, "_blank");
-  };
-
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-[#F4F8F6]">
@@ -279,21 +246,22 @@ export default function DashboardPage() {
   return (
     <AppShell title="Controle de Frete">
       <div className="space-y-5">
-        {/* Card do Saldo Esmeralda & Gelo */}
+        {/* Card do Saldo + Saldo Individual por Transportadora */}
         <BalanceCard
           balance={balance}
           netProfit={netProfit}
           totalFreights={totalFreights}
           totalPayments={totalPayments}
           monthReceived={monthReceived}
-          onOpenPayment={() => setPaymentModalOpen(true)}
-          onShareUnpaid={handleShareUnpaid}
+          byTransporter={pendingSummary.byTransporter}
+          onOpenPayment={handleOpenPayment}
+          onOpenReceipt={handleOpenReceipt}
         />
 
         {/* Cartões de Chaves PIX com Logos da Caixa e Nubank */}
         <PixCards />
 
-        {/* Grid 2 Colunas no Desktop (Lançamento à esquerda + Extrato à direita) */}
+        {/* Grid 2 Colunas no Desktop */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
           {/* Coluna Esquerda: Lançamento Unificado */}
           <section className="lg:col-span-5 lg:sticky lg:top-8 clean-card p-4 sm:p-5 space-y-4">
@@ -370,7 +338,7 @@ export default function DashboardPage() {
             </button>
           </section>
 
-          {/* Coluna Direita: Últimas Movimentações Limpas (Zero fundo rosado!) */}
+          {/* Coluna Direita: Últimas Movimentações */}
           <section className="lg:col-span-7 clean-card p-4 sm:p-5 space-y-4">
             <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-[#EEF5F1]">
               <div>
@@ -378,7 +346,7 @@ export default function DashboardPage() {
                   Últimas Movimentações
                 </h2>
                 <p className="text-xs text-[#648274]">
-                  Histórico sincronizado em tempo real
+                  Toque no lápis para editar ou na lixeira para estornar
                 </p>
               </div>
 
@@ -414,7 +382,7 @@ export default function DashboardPage() {
                     className="px-3 py-1.5 rounded-xl bg-[#ECFDF5] hover:bg-[#D1FAE5] text-[#047857] text-xs font-bold flex items-center gap-1.5 transition-colors"
                   >
                     <Share2 className="w-3.5 h-3.5" />
-                    <span>Compartilhar</span>
+                    <span>Texto</span>
                   </button>
                 )}
               </div>
@@ -459,22 +427,34 @@ export default function DashboardPage() {
                       <div className="space-y-2">
                         {dayItems.map((item) => {
                           if (item.type === "payment") {
+                            const linkedTransport = item.transportId
+                              ? transporters.find(
+                                  (t) => t.id === item.transportId
+                                )
+                              : null;
+
                             return (
                               <SwipeableItem
                                 key={item.id}
                                 onDelete={() =>
                                   cancelRecord("payment", item.id)
                                 }
-                                confirmTitle={`Deseja cancelar o recebimento de ${formatCurrency(item.amount / 100)}?`}
+                                confirmTitle={`Deseja estornar o recebimento de ${formatCurrency(item.amount / 100)}?`}
                               >
                                 <div className="p-3.5 rounded-2xl bg-[#F0FDF4] border border-[#BBF7D0] flex items-center justify-between gap-3">
                                   <div className="flex items-center gap-3 min-w-0">
-                                    <BankIcon bank={item.bank} className="w-10 h-10" />
+                                    <BankIcon
+                                      bank={item.bank}
+                                      className="w-10 h-10"
+                                    />
                                     <div className="min-w-0">
                                       <div className="text-xs sm:text-sm font-bold text-[#14532D] truncate">
                                         Pagamento Recebido
+                                        {linkedTransport
+                                          ? ` • ${linkedTransport.name}`
+                                          : ""}
                                       </div>
-                                      <div className="flex items-center gap-2 text-xs text-[#166534]/85">
+                                      <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-[#166534]/85">
                                         <span>
                                           {format(
                                             new Date(item.createdAt),
@@ -486,27 +466,48 @@ export default function DashboardPage() {
                                             • {item.bank}
                                           </span>
                                         )}
+                                        {item.authorName && (
+                                          <span>• por {item.authorName}</span>
+                                        )}
                                       </div>
                                     </div>
                                   </div>
 
-                                  <div className="flex items-center gap-2.5 shrink-0">
-                                    <span className="text-sm sm:text-base font-extrabold text-[#15803D]">
+                                  <div className="flex items-center gap-1.5 shrink-0">
+                                    <span className="text-sm sm:text-base font-extrabold text-[#15803D] mr-1">
                                       - {formatCurrency(item.amount / 100)}
                                     </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setEditTarget({
+                                          type: "payment",
+                                          id: item.id,
+                                          amount: item.amount,
+                                          bank: item.bank,
+                                          transportId: item.transportId,
+                                          createdAt: item.createdAt,
+                                          note: item.note,
+                                        })
+                                      }
+                                      className="p-1.5 rounded-lg text-[#526D60] hover:text-[#047857] hover:bg-white/80 transition-colors"
+                                      title="Editar pagamento"
+                                    >
+                                      <Pencil className="w-3.5 h-3.5" />
+                                    </button>
                                     <button
                                       type="button"
                                       onClick={() => {
                                         if (
                                           confirm(
-                                            `Deseja remover o recebimento de ${formatCurrency(item.amount / 100)}?`
+                                            `Deseja estornar o recebimento de ${formatCurrency(item.amount / 100)}?`
                                           )
                                         ) {
                                           void cancelRecord("payment", item.id);
                                         }
                                       }}
                                       className="p-1.5 rounded-lg text-[#648274] hover:text-rose-600 hover:bg-white/80 transition-colors"
-                                      title="Remover pagamento"
+                                      title="Estornar pagamento"
                                     >
                                       <Trash2 className="w-4 h-4" />
                                     </button>
@@ -519,7 +520,6 @@ export default function DashboardPage() {
                           const transport = transporters.find(
                             (t) => t.id === item.transportId
                           );
-                          const Icon = resolveTransporterIcon(transport?.icon);
                           const palette = resolveTransporterPalette(
                             transport?.color
                           );
@@ -540,25 +540,58 @@ export default function DashboardPage() {
                                     }}
                                     className="w-9 h-9 rounded-xl border flex items-center justify-center shrink-0"
                                   >
-                                    <Icon className="w-4 h-4" />
+                                    {React.createElement(
+                                      resolveTransporterIcon(transport?.icon),
+                                      { className: "w-4 h-4" }
+                                    )}
                                   </div>
                                   <div className="min-w-0">
                                     <div className="text-xs sm:text-sm font-bold text-[#0F291E] truncate">
                                       {transport?.name || "Transportadora"}
                                     </div>
-                                    <div className="text-xs text-[#7A9688]">
-                                      {format(
-                                        new Date(item.createdAt),
-                                        "HH:mm"
+                                    <div className="flex flex-wrap items-center gap-x-1.5 text-xs text-[#7A9688]">
+                                      <span>
+                                        {format(
+                                          new Date(item.createdAt),
+                                          "HH:mm"
+                                        )}
+                                      </span>
+                                      {item.authorName && (
+                                        <span>• por {item.authorName}</span>
+                                      )}
+                                      {item.note && (
+                                        <span className="truncate">
+                                          • {item.note}
+                                        </span>
                                       )}
                                     </div>
                                   </div>
                                 </div>
 
-                                <div className="flex items-center gap-2.5 shrink-0">
-                                  <span className="text-sm sm:text-base font-extrabold text-[#0F291E]">
+                                <div className="flex items-center gap-1.5 shrink-0">
+                                  <span className="text-sm sm:text-base font-extrabold text-[#0F291E] mr-1">
                                     {formatCurrency(item.amount / 100)}
                                   </span>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setEditTarget({
+                                        type: "freight",
+                                        id: item.id,
+                                        transportId:
+                                          item.transportId ||
+                                          activeTransporters[0]?.id ||
+                                          "",
+                                        amount: item.amount,
+                                        createdAt: item.createdAt,
+                                        note: item.note,
+                                      })
+                                    }
+                                    className="p-1.5 rounded-lg text-[#86A395] hover:text-[#047857] hover:bg-[#ECFDF5] transition-colors"
+                                    title="Editar frete"
+                                  >
+                                    <Pencil className="w-3.5 h-3.5" />
+                                  </button>
                                   <button
                                     type="button"
                                     onClick={() => {
@@ -593,7 +626,21 @@ export default function DashboardPage() {
       {/* Modal Rápido de Baixa / Pagamento */}
       <QuickPaymentModal
         open={paymentModalOpen}
+        initialTransportId={paymentTransportId}
         onClose={() => setPaymentModalOpen(false)}
+      />
+
+      {/* Modal de Geração de Card em Imagem / WhatsApp */}
+      <ShareReceiptModal
+        open={receiptModalOpen}
+        initialTransportId={receiptTransportId}
+        onClose={() => setReceiptModalOpen(false)}
+      />
+
+      {/* Modal de Edição Rápida em 1 Toque */}
+      <EditRecordModal
+        target={editTarget}
+        onClose={() => setEditTarget(null)}
       />
     </AppShell>
   );
